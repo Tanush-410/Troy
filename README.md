@@ -15,7 +15,7 @@ Drift is induced four ways:
 - D2: ambiguous or role-conflicting instructions
 - D3: prompt injections in tickets, supplier text and competitor pages, including a cross-agent path
 
-All tools are mocked and every run is seeded. `CLAUDE.md` is the project brief. [`docs/decisions.md`](docs/decisions.md) records every design decision, the frozen-file commit hashes, and any change made before the freeze. [`docs/progress.md`](docs/progress.md) summarises each milestone.
+All tools are mocked and every run is seeded. `CLAUDE.md` is the project brief, and [`docs/requirements.md`](docs/requirements.md) is the consolidated requirements specification. [`docs/decisions.md`](docs/decisions.md) records every design decision, the frozen-file commit hashes, and any change made before the freeze. [`docs/progress.md`](docs/progress.md) summarises each milestone.
 
 ## Install
 
@@ -24,6 +24,12 @@ Requires [uv](https://docs.astral.sh/uv/). uv installs the pinned Python version
 ```sh
 curl -LsSf https://astral.sh/uv/install.sh | sh   # if uv is not installed
 uv sync
+```
+
+Without uv, use Python 3.11 and the pinned `requirements.txt`, which is exported from `uv.lock`:
+
+```sh
+pip install -r requirements.txt
 ```
 
 ## Run the tests
