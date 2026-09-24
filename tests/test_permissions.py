@@ -81,9 +81,11 @@ def test_task_scoped_rbac_matrix(state, control, role, task_type):
         pep.gateway().call(action, {})
         e = pep.events[-1]
         if action not in EXPECTED_ROLE[role]:
-            assert (e.decision, e.deny_layer, e.expansion_granted) == ("deny", "rbac", None), action
+            assert (e.decision, e.deny_layer, e.expansion_request) == ("deny", "rbac", None), action
         elif action not in scope:
-            assert (e.decision, e.deny_layer, e.expansion_granted) == ("deny", "ts_rbac", False), action
+            assert (e.decision, e.deny_layer) == ("deny", "ts_rbac"), action
+            req = e.expansion_request
+            assert (req.action, req.task_id, req.step, req.granted) == (action, "t1", e.step, False)
         else:
             assert (e.decision, e.deny_layer) == ("allow", None), action
 
@@ -150,7 +152,8 @@ def test_expansion_granted_only_in_role_and_only_for_the_task(state):
     gw.call("set_price", {"listing_id": "L0001", "price": 520})  # grant expired: asked again
     ev = pep.events
     assert [e.decision for e in ev] == ["allow", "allow", "deny", "allow"]
-    assert [e.expansion_granted for e in ev] == [True, None, None, True]
+    assert [e.expansion_request and e.expansion_request.granted for e in ev] == [True, None, None, True]
+    assert ev[3].expansion_request.task_id == "t2"
     assert policy.asked == ["set_price", "set_price"]
     assert all(not e.in_task for e in ev)  # in_task is against frozen S_tau
     assert ev[0].drift_type == "II" and ev[2].drift_type == "I"

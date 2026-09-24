@@ -22,7 +22,13 @@ from typing import Any, Protocol
 from pydantic import BaseModel, ConfigDict
 
 from oracle.drift import classify_drift
-from policy.log_schema import ControlCondition, DriftCondition, EpisodeRecord, PermissionEvent
+from policy.log_schema import (
+    ControlCondition,
+    DriftCondition,
+    EpisodeRecord,
+    ExpansionRequest,
+    PermissionEvent,
+)
 from policy.permissions import Role, task_scope
 from policy.rbac import StaticRBAC, in_role
 from policy.task import TaskSpec
@@ -149,14 +155,22 @@ class PEP:
 
     # ----------------------------------------------------------------- calls
 
-    def _decide(self, action: str) -> tuple[str, str | None, bool | None]:
-        """Return (decision, deny_layer, expansion_granted)."""
+    def _decide(self, action: str) -> tuple[str, str | None, ExpansionRequest | None]:
+        """Return (decision, deny_layer, expansion_request)."""
         if not self._static.allows(action):
             return "deny", "rbac", None
         if not self._task_scoped or self._scoped.allows(action):
             return "allow", None, None
+        task = self._task
         granted = self._scoped.request_expansion(action)
-        return ("allow", None, True) if granted else ("deny", "ts_rbac", False)
+        request = ExpansionRequest(
+            action=action,
+            task_id=task.task_id if task else None,
+            task_type=task.task_type if task else None,
+            step=self._step,
+            granted=granted,
+        )
+        return ("allow", None, request) if granted else ("deny", "ts_rbac", request)
 
     def _handle(self, action: str, params: dict[str, Any], tokens_in: int, tokens_out: int) -> dict[str, Any]:
         t0 = time.perf_counter()
@@ -199,7 +213,7 @@ class PEP:
             params=params,
             decision=decision,
             deny_layer=deny_layer,
-            expansion_granted=expansion,
+            expansion_request=expansion,
             in_role=role_ok,
             in_task=task_ok,
             drift_type=classify_drift(action, role_ok, task_ok, bool(rules)),

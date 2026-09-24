@@ -2,9 +2,9 @@
 
 `PermissionEvent` is the full per-call record, including ground-truth labels.
 `DetectorEvent` is the only view the PLDD may consume: action, params,
-decision and timing, plus the orchestrator-assigned role and task type needed
-to pick a baseline. It carries no labels, taint, tokens, prompts or outputs.
-The detector must load logs through `read_detector_events`, never by parsing
+decision and timing, whether the PEP had to ask for a scope expansion, plus the
+orchestrator-assigned role and task type needed to pick a baseline. It carries
+no labels, taint, tokens, prompts or outputs. The detector must load logs through `read_detector_events`, never by parsing
 PermissionEvent itself.
 """
 
@@ -28,6 +28,16 @@ class _Record(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class ExpansionRequest(_Record):
+    """A C2/C4 request to add an in-role action to the current task scope."""
+
+    action: str
+    task_id: str | None
+    task_type: TaskType | None
+    step: int
+    granted: bool
+
+
 class PermissionEvent(_Record):
     run_id: str
     episode_id: str
@@ -46,7 +56,7 @@ class PermissionEvent(_Record):
     params: dict[str, Any]
     decision: Literal["allow", "deny"]
     deny_layer: Literal["rbac", "ts_rbac"] | None
-    expansion_granted: bool | None  # C2/C4 only: orchestrator's answer, if asked
+    expansion_request: ExpansionRequest | None  # C2/C4 only, logged even when denied
     in_role: bool
     in_task: bool  # against the frozen S_tau, whatever the control condition
     drift_type: DriftType
@@ -92,17 +102,25 @@ class DetectorEvent(_Record):
     action: str
     params: dict[str, Any]
     decision: Literal["allow", "deny"]
+    expansion_requested: bool
+
+
+_COPIED = set(DetectorEvent.model_fields) - {"expansion_requested"}
+
+
+def _detector_fields(raw: dict[str, Any]) -> DetectorEvent:
+    return DetectorEvent.model_validate(
+        {k: raw[k] for k in _COPIED} | {"expansion_requested": raw["expansion_request"] is not None}
+    )
 
 
 def to_detector_event(e: PermissionEvent) -> DetectorEvent:
-    return DetectorEvent.model_validate(e.model_dump(include=set(DetectorEvent.model_fields)))
+    return _detector_fields(e.model_dump(mode="json"))
 
 
 def read_detector_events(path: Path) -> Iterator[DetectorEvent]:
     """Read a PEP JSONL log, keeping only the fields the detector may see."""
-    allowed = set(DetectorEvent.model_fields)
     with path.open() as f:
         for line in f:
             if line.strip():
-                raw = json.loads(line)
-                yield DetectorEvent.model_validate({k: raw[k] for k in allowed})
+                yield _detector_fields(json.loads(line))

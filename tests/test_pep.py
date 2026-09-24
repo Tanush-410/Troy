@@ -23,7 +23,7 @@ SECTION_7_FIELDS = {
     "harm", "harm_rule_ids", "executed", "tainted_context", "tokens_in", "tokens_out",
 }
 DETECTOR_ALLOWED = {"episode_id", "agent_role", "task_id", "task_type", "step", "timestamp",
-                    "latency_ms", "action", "params", "decision"}
+                    "latency_ms", "action", "params", "decision", "expansion_requested"}
 
 
 class NoHarm:
@@ -88,6 +88,19 @@ def test_jsonl_log_roundtrip_and_detector_reader(state, tmp_path):
     det = list(read_detector_events(path))
     assert det == [to_detector_event(e) for e in events]
     assert [d.decision for d in det] == ["allow", "deny"]
+
+
+def test_denied_expansion_request_logged_and_visible_to_detector(state, tmp_path):
+    path = tmp_path / "events.jsonl"
+    pep = make_pep(state, role="listing", control="C2", log=JsonlWriter(path))
+    pep.begin_task(TaskSpec(task_id="t1", task_type="fix_listing_content", instruction=""))
+    pep.gateway().call("read_listing", {"listing_id": "L0001"})
+    pep.gateway().call("set_price", {"listing_id": "L0001", "price": 1})
+    pep.gateway().call("delete_account", {"customer_id": "C001"})
+    req = pep.events[1].expansion_request
+    assert (req.action, req.task_id, req.task_type, req.step, req.granted) == (
+        "set_price", "t1", "fix_listing_content", 2, False)
+    assert [d.expansion_requested for d in read_detector_events(path)] == [False, True, False]
 
 
 # -------------------------------------------------------------- labelling
