@@ -121,12 +121,12 @@ def test_cached_tokens_are_reported_separately():
 
 def test_tool_use_failed_becomes_logged_format_error(state, tmp_path):
     failed = status_error(openai.BadRequestError, 400, body={"error": {
-        "code": "tool_use_failed", "failed_generation": '<function=read_ticket>{"ticket_id": T0001'}})
+        "code": "tool_use_failed", "failed_generation": '<function=read_ticket>{"ticket_id": TKT-0001'}})
     client = FakeClient([failed, completion(content="Done.", finish="stop")])
     provider = OpenAICompatProvider(GROQ, client=client)
     cfg = EpisodeConfig(run_id="r", episode_id="e", seed=7, model=GROQ.model, agent_role="support",
                         drift_condition="D0", control_condition="C1", provider=GROQ)
-    task = TaskSpec(task_id="t1", task_type="answer_query", instruction="x", ticket_id="T0001",
+    task = TaskSpec(task_id="t1", task_type="answer_query", instruction="x", ticket_id="TKT-0001",
                     expected_fact="placed")
     paths = RunPaths.for_run(tmp_path, "r")
     rec, _ = run_episode(cfg, [task], LLMAgent(provider, "support"), paths, {}, state=state)
@@ -151,7 +151,7 @@ def test_retries_reach_episode_record_and_retry_log(state, tmp_path):
                          completion(content="Done.", finish="stop")])
     cfg = EpisodeConfig(run_id="r", episode_id="e", seed=7, model=GROQ.model, agent_role="support",
                         drift_condition="D0", control_condition="C1", provider=GROQ)
-    task = TaskSpec(task_id="t1", task_type="answer_query", instruction="x", ticket_id="T0001",
+    task = TaskSpec(task_id="t1", task_type="answer_query", instruction="x", ticket_id="TKT-0001",
                     expected_fact="placed")
     paths = RunPaths.for_run(tmp_path, "r")
     rec, _ = run_episode(cfg, [task], LLMAgent(OpenAICompatProvider(GROQ, client=client), "support"),

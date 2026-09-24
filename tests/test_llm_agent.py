@@ -58,8 +58,8 @@ def make_pep(state, role="support"):
     ctx = EpisodeContext(run_id="r", episode_id="e", seed=7, model="fake", agent_role=role,
                          drift_condition="D0", control_condition="C1")
     pep = PEP(ctx, state, HarmOracle())
-    pep.begin_task(TaskSpec(task_id="t1", task_type="answer_query", instruction="Answer T0001",
-                            ticket_id="T0001"))
+    pep.begin_task(TaskSpec(task_id="t1", task_type="answer_query", instruction="Answer TKT-0001",
+                            ticket_id="TKT-0001"))
     return pep
 
 
@@ -68,17 +68,17 @@ def make_pep(state, role="support"):
 
 def test_loop_routes_calls_through_pep_and_feeds_results_back(state):
     provider = FakeProvider([
-        turn(("read_ticket", {"ticket_id": "T0001"}), ("lookup_order", '{"order_id": "O0041"}')),
+        turn(("read_ticket", {"ticket_id": "TKT-0001"}), ("lookup_order", '{"order_id": "ORD-0041"}')),
         turn(text="Done."),
     ])
     agent = LLMAgent(provider, "support")
     pep = make_pep(state)
-    run = agent.run_task(AgentTask(task_id="t1", instruction="Answer T0001"), pep.gateway())
+    run = agent.run_task(AgentTask(task_id="t1", instruction="Answer TKT-0001"), pep.gateway())
     assert [e.action for e in pep.events] == ["read_ticket", "lookup_order"]
     assert [(e.tokens_in, e.tokens_out) for e in pep.events] == [(100, 20), (0, 0)]  # first call carries the turn
     (results,) = provider.sessions[0].results
     assert [r.call_id for r in results] == ["c0", "c1"] and not any(r.is_error for r in results)
-    assert json.loads(results[0].content)["data"]["ticket_id"] == "T0001"
+    assert json.loads(results[0].content)["data"]["ticket_id"] == "TKT-0001"
     assert (run.model_turns, run.input_tokens, run.output_tokens, run.end) == (2, 200, 40, "done")
     assert [e["role"] for e in run.transcript][:2] == ["system", "user"]
 
@@ -92,7 +92,7 @@ def test_every_tool_schema_is_offered_whatever_the_role():
 
 
 def test_malformed_arguments_become_format_errors(state):
-    provider = FakeProvider([turn(("read_ticket", '{"ticket_id": T0001}')), turn(text="sorry")])
+    provider = FakeProvider([turn(("read_ticket", '{"ticket_id": TKT-0001}')), turn(text="sorry")])
     pep = make_pep(state)
     LLMAgent(provider, "support").run_task(AgentTask(task_id="t1", instruction="x"), pep.gateway())
     e = pep.events[0]
@@ -101,7 +101,7 @@ def test_malformed_arguments_become_format_errors(state):
 
 
 def test_turn_limit(state):
-    loop = [turn(("read_ticket", {"ticket_id": "T0001"})) for _ in range(5)]
+    loop = [turn(("read_ticket", {"ticket_id": "TKT-0001"})) for _ in range(5)]
     run = LLMAgent(FakeProvider(loop), "support", max_turns_per_task=3).run_task(
         AgentTask(task_id="t1", instruction="x"), make_pep(state).gateway())
     assert (run.end, run.model_turns) == ("step_limit", 3)
@@ -146,13 +146,13 @@ def anthropic_response(blocks, stop="tool_use"):
 
 
 def test_anthropic_session_message_shapes():
-    tool_use = NS(type="tool_use", id="tu1", name="read_ticket", input={"ticket_id": "T0001"})
+    tool_use = NS(type="tool_use", id="tu1", name="read_ticket", input={"ticket_id": "TKT-0001"})
     client = FakeAnthropicClient([anthropic_response([NS(type="text", text="Looking."), tool_use])])
     cfg = ProviderConfig(kind="anthropic", context_window=200_000, model="claude-haiku-4-5-20251001", temperature=0.5)
     s = AnthropicProvider(cfg, client=client).new_session("SYS", all_tool_schemas())
     s.add_user("hi")
     t = s.step()
-    assert t.tool_calls == [ToolCall(id="tu1", name="read_ticket", arguments={"ticket_id": "T0001"})]
+    assert t.tool_calls == [ToolCall(id="tu1", name="read_ticket", arguments={"ticket_id": "TKT-0001"})]
     assert (t.text, t.stop_reason) == ("Looking.", "tool_use")
     assert (t.usage.total_input, t.usage.cache_read_tokens) == (85, 30)
     call = client.calls[0]
@@ -185,7 +185,7 @@ class FakeOpenAIClient:
 
 
 def test_openai_compat_session_keeps_raw_arguments():
-    call = NS(id="x1", function=NS(name="read_ticket", arguments='{"ticket_id": "T0001"'))  # truncated JSON
+    call = NS(id="x1", function=NS(name="read_ticket", arguments='{"ticket_id": "TKT-0001"'))  # truncated JSON
     resp = NS(choices=[NS(finish_reason="tool_calls",
                           message=NS(content="<think>hmm</think>On it.", tool_calls=[call]))],
               usage=NS(prompt_tokens=70, completion_tokens=9))
@@ -194,7 +194,7 @@ def test_openai_compat_session_keeps_raw_arguments():
     s = OpenAICompatProvider(cfg, client=client).new_session("SYS", all_tool_schemas())
     s.add_user("hi")
     t = s.step()
-    assert t.tool_calls[0].arguments == '{"ticket_id": "T0001"'
+    assert t.tool_calls[0].arguments == '{"ticket_id": "TKT-0001"'
     assert (t.text, t.usage.total_input, t.usage.output_tokens) == ("On it.", 70, 9)
     assert client.calls[0]["seed"] == 3 and "temperature" not in client.calls[0]
     assert client.calls[0]["messages"][0] == {"role": "system", "content": "SYS"}
@@ -207,11 +207,11 @@ def test_openai_compat_session_keeps_raw_arguments():
 
 
 def test_runner_records_agent_usage(state, tmp_path):
-    provider = FakeProvider([turn(("read_ticket", {"ticket_id": "T0001"})), turn(text="Done.")])
+    provider = FakeProvider([turn(("read_ticket", {"ticket_id": "TKT-0001"})), turn(text="Done.")])
     cfg = EpisodeConfig(run_id="r", episode_id="e1", seed=7, model="fake", agent_role="support",
                         drift_condition="D0", control_condition="C1",
                         provider=ProviderConfig(kind="openai_compat", context_window=200_000, model="fake"))
-    task = TaskSpec(task_id="t1", task_type="answer_query", instruction="x", ticket_id="T0001",
+    task = TaskSpec(task_id="t1", task_type="answer_query", instruction="x", ticket_id="TKT-0001",
                     expected_fact="placed")
     rec, _ = run_episode(cfg, [task], LLMAgent(provider, "support"), RunPaths.for_run(tmp_path, "r"), {},
                          state=state)

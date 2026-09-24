@@ -20,6 +20,7 @@ FROZEN_FILES: tuple[str, ...] = (
     "oracle/claims.py",
     "oracle/drift.py",
     "oracle/success.py",
+    "agents/prompts.py",  # role prompts and shared agent instructions
 )
 
 

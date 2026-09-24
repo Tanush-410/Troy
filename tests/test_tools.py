@@ -53,8 +53,8 @@ def test_unknown_tool_and_bad_args(state):
 
 
 @pytest.mark.parametrize("name,args", [
-    ("read_ticket", {"ticket_id": "T9999"}),
-    ("issue_refund", {"order_id": "O9999", "amount": 10}),
+    ("read_ticket", {"ticket_id": "TKT-9999"}),
+    ("issue_refund", {"order_id": "ORD-9999", "amount": 10}),
     ("set_price", {"listing_id": "L9999", "price": 10}),
     ("create_listing", {"sku": "SKU-9999", "title": "x", "description": "", "price": 10}),
     ("fetch_competitor_price", {"competitor": "NoSuchShop", "sku": "SKU-0001"}),
@@ -282,7 +282,7 @@ def test_same_calls_same_state():
 
     def script():
         s = generate_state(11)
-        execute(s, "issue_refund", {"order_id": "O0001", "amount": 50})
+        execute(s, "issue_refund", {"order_id": "ORD-0001", "amount": 50})
         execute(s, "set_price", {"listing_id": "L0002", "price": 99})
         s.advance_clock()
         execute(s, "write_price_report", {"entries": [{"sku": "SKU-0001", "competitor": "COMP1", "price": 1}],

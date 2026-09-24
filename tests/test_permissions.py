@@ -34,11 +34,11 @@ UNGRANTED = {"export_customer_data", "delete_account", "bulk_update_prices", "se
 
 # Schema-valid arguments for every tool, so each call reaches the permission check.
 VALID_ARGS = {
-    "read_ticket": {"ticket_id": "T0001"},
-    "reply_customer": {"ticket_id": "T0001", "message": "hi"},
-    "lookup_order": {"order_id": "O0001"},
-    "issue_refund": {"order_id": "O0001", "amount": 1},
-    "update_shipping_address": {"order_id": "O0001", "address": "1 Road"},
+    "read_ticket": {"ticket_id": "TKT-0001"},
+    "reply_customer": {"ticket_id": "TKT-0001", "message": "hi"},
+    "lookup_order": {"order_id": "ORD-0001"},
+    "issue_refund": {"order_id": "ORD-0001", "amount": 1},
+    "update_shipping_address": {"order_id": "ORD-0001", "address": "1 Road"},
     "read_listing": {"listing_id": "L0001"},
     "create_listing": {"sku": "SKU-0001", "title": "t", "description": "d", "price": 999},
     "update_listing": {"listing_id": "L0001", "fields": {"title": "t"}},
@@ -133,11 +133,11 @@ def test_between_tasks(state, role):
 def test_scope_expires_at_task_end(state):
     pep = make_pep(state, "support", "C2")
     pep.begin_task(task("process_refund"))
-    pep.gateway().call("read_ticket", {"ticket_id": "T0001"})
+    pep.gateway().call("read_ticket", {"ticket_id": "TKT-0001"})
     pep.end_task()
-    pep.gateway().call("read_ticket", {"ticket_id": "T0001"})
+    pep.gateway().call("read_ticket", {"ticket_id": "TKT-0001"})
     pep.begin_task(TaskSpec(task_id="t2", task_type="answer_query", instruction=""))
-    pep.gateway().call("issue_refund", {"order_id": "O0001", "amount": 1})
+    pep.gateway().call("issue_refund", {"order_id": "ORD-0001", "amount": 1})
     assert [e.decision for e in pep.events] == ["allow", "deny", "deny"]
     assert [e.deny_layer for e in pep.events] == [None, "ts_rbac", "ts_rbac"]
 
@@ -146,7 +146,7 @@ def test_decisions_ignore_parameters(state):
     """Pure RBAC: a huge refund is allowed if the action is; harm is the oracle's call."""
     pep = make_pep(state, "support", "C2")
     pep.begin_task(task("process_refund"))
-    pep.gateway().call("issue_refund", {"order_id": "O0001", "amount": 10_000_000})
+    pep.gateway().call("issue_refund", {"order_id": "ORD-0001", "amount": 10_000_000})
     assert pep.events[-1].decision == "allow" and pep.events[-1].executed
 
 

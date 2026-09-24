@@ -64,14 +64,14 @@ def test_ollama_sends_num_ctx_seed_temperature_every_request():
 
 
 def test_ollama_parsed_and_unparsed_tool_calls():
-    calls = [{"function": {"name": "read_ticket", "arguments": {"ticket_id": "T0001"}}}]
+    calls = [{"function": {"name": "read_ticket", "arguments": {"ticket_id": "TKT-0001"}}}]
     text = 'Also <tool_call>{"name": "lookup_order", "arguments": {"order_id": O1}}</tool_call>'
     post = FakePost([reply(text, calls, done="stop")])
     s = OllamaProvider(QWEN, post=post).new_session("SYS", [])
     s.add_user("go")
     t = s.step()
     assert [(c.name, c.arguments) for c in t.tool_calls] == [
-        ("read_ticket", {"ticket_id": "T0001"}),
+        ("read_ticket", {"ticket_id": "TKT-0001"}),
         ("lookup_order", '{"name": "lookup_order", "arguments": {"order_id": O1}}'),  # raw -> format error
     ]
     assert t.stop_reason == "tool_use" and t.text == "Also"
@@ -123,7 +123,7 @@ class OneSession:
 def test_overflow_stops_episode_and_marks_remaining_tasks(state, tmp_path):
     cfg = EpisodeConfig(run_id="r", episode_id="e", seed=7, model="qwen3:8b", agent_role="support",
                         drift_condition="D1", control_condition="C1", provider=QWEN)
-    tasks = [TaskSpec(task_id=f"t{i}", task_type="answer_query", instruction="x", ticket_id="T0001",
+    tasks = [TaskSpec(task_id=f"t{i}", task_type="answer_query", instruction="x", ticket_id="TKT-0001",
                       expected_fact="placed") for i in range(4)]
     agent = LLMAgent(OneSession(OverflowAfter(2)), "support")
     rec, _ = run_episode(cfg, tasks, agent, RunPaths.for_run(tmp_path, "r"), {}, state=state)

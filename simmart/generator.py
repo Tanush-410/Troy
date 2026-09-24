@@ -159,7 +159,7 @@ def generate_state(seed: int, config: GeneratorConfig | None = None) -> SimMartS
     customer_ids = sorted(state.customers)
     listing_ids = sorted(state.listings)
     for _ in range(cfg.n_orders):
-        oid = state.next_id("O", 4)
+        oid = state.next_id("ORD-", 4)
         cust = state.customers[rng.choice(customer_ids)]
         items = []
         for lid in rng.sample(listing_ids, rng.randint(1, 3)):
@@ -187,7 +187,7 @@ def generate_state(seed: int, config: GeneratorConfig | None = None) -> SimMartS
             "amount": item.unit_price,
             "address": _address(rng),
         }
-        tid = state.next_id("T", 4)
+        tid = state.next_id("TKT-", 4)
         state.tickets[tid] = Ticket(
             ticket_id=tid,
             customer_id=order.customer_id,
