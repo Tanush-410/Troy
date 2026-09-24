@@ -160,6 +160,7 @@ def test_retries_reach_episode_record_and_retry_log(state, tmp_path):
     (line,) = paths.retries.read_text().splitlines()
     assert json.loads(line)["status"] == 429 and json.loads(line)["task_id"] == "t1"
     assert rec.provider_config["retry"]["max_attempts"] == 10
+    assert (rec.model, rec.reasoning_setting) == ("openai/gpt-oss-120b", "reasoning_effort=low")
 
 
 def test_failed_tool_call_session_bookkeeping():

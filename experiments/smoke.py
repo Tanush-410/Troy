@@ -34,10 +34,10 @@ TEMPERATURE = 0.7  # fixed for every model (see docs/decisions.md)
 QWEN3_NUM_CTX = 32_768  # qwen3:8b's native window, set explicitly on every request
 
 GROQ_URL = "https://api.groq.com/openai/v1"
-# Candidate Groq models -> context window (docs, 2026-09-24; checked against the API before use).
+# Candidate Groq models -> context window, as reported by GET /models on 2026-09-24.
+# (llama-3.3-70b-versatile is listed in Groq's docs but not available to this account.)
 GROQ_CANDIDATES: dict[str, int] = {
     "openai/gpt-oss-120b": 131_072,
-    "llama-3.3-70b-versatile": 131_072,
     "qwen/qwen3.8-27b": 131_072,
 }
 # gpt-oss reasons on every request and cannot turn it off; "low" is the closest to parity.

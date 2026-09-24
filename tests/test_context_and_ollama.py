@@ -130,6 +130,7 @@ def test_overflow_stops_episode_and_marks_remaining_tasks(state, tmp_path):
     assert rec.task_ends == {"t0": "done", "t1": "context_overflow", "t2": "not_run", "t3": "not_run"}
     assert [o.task_id for o in rec.task_outcomes] == ["t0", "t1"] and rec.n_tasks == 2
     assert rec.provider_config["temperature"] == 0.7 and rec.provider_config["context_window"] == 32_768
+    assert rec.reasoning_setting == "think=false"
 
 
 @pytest.mark.parametrize("role", ["support", "listing", "price_intel"])

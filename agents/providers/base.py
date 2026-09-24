@@ -34,6 +34,14 @@ class ProviderConfig(BaseModel):
     reasoning_effort: str | None = None  # openai_compat: for reasoning models that take it (gpt-oss)
     retry: RetryPolicy = Field(default_factory=RetryPolicy)
 
+    def reasoning_setting(self) -> str:
+        """Human-readable reasoning mode, recorded on every episode record."""
+        if self.reasoning_effort is not None:
+            return f"reasoning_effort={self.reasoning_effort}"
+        if self.think is not None:
+            return f"think={str(self.think).lower()}"
+        return "provider_default"
+
 
 @dataclass(frozen=True)
 class ToolCall:

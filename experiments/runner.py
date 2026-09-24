@@ -103,6 +103,7 @@ def run_episode(
 
     record = pep.episode_record(outcomes, cfg.config_hash(), provenance).model_copy(
         update={**usage, "task_ends": task_ends, "api_retries": n_retries, "api_retry_wait_s": retry_wait,
-                "provider_config": cfg.provider.model_dump(mode="json") if cfg.provider else None})
+                "provider_config": cfg.provider.model_dump(mode="json") if cfg.provider else None,
+                "reasoning_setting": cfg.provider.reasoning_setting() if cfg.provider else None})
     JsonlWriter(paths.episodes).write(record)
     return record, state

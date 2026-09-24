@@ -107,6 +107,7 @@ class EpisodeRecord(_Record):
     provenance: dict[str, Any] = Field(default_factory=dict)  # frozen-file commit hashes
     # Provider settings (model, temperature, seed, context window), filled in by the runner.
     provider_config: dict[str, Any] | None = None
+    reasoning_setting: str | None = None  # e.g. "reasoning_effort=low", "think=false"
     # Agent-side usage, filled in by the runner. Includes model turns that made
     # no tool call, which no PermissionEvent carries.
     model_turns: int = 0

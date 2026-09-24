@@ -94,7 +94,12 @@ Frozen files: `policy/permissions.py`, `oracle/harm_rules.py`, `oracle/claims.py
 - **Retries:** the SDK's built-in (unlogged) retries are off. 429, 5xx and connection errors are retried with exponential backoff (2 s doubling, capped at 120 s, at least the server's `retry-after`), up to 10 attempts. A retry re-sends the byte-identical request, so it cannot change results. Every retry is logged to `logs/<run_id>/retries.jsonl` and counted on the episode record (`api_retries`, `api_retry_wait_s`). When attempts run out, the run stops with an error; no task is ever skipped. A request larger than a per-request token limit (413 or "request too large") is fatal immediately, because waiting cannot fix it.
 - **Groq `tool_use_failed`:** when the server can't parse the model's tool call it returns HTTP 400 with the failed generation. This becomes a tool call with `parse_error` set, which the PEP logs as a format error, and the model is told in a user turn. The same explicit `parse_error` path is used for Ollama `<tool_call>` blocks the server leaves unparsed, instead of relying on the raw text failing JSON parsing.
 - **Prompt caching (Groq):** automatic and cannot be turned off, currently only for the gpt-oss models, with a 50% discount on cached input, a 2-hour lifetime, and a minimum prefix of 128–1,024 tokens depending on the model. Cached tokens are read from `usage.prompt_tokens_details.cached_tokens` and recorded as `cache_read_tokens`.
-- **D1 overflow guard:** set to the chosen Groq model's real context window, checked against the API before use.
+- **Chosen Groq model: `openai/gpt-oss-120b`** (120B total, 5.1B active, MoE), `reasoning_effort="low"`, 131,072-token context (the D1 overflow guard's window).
+- **Both models use minimal reasoning:** gpt-oss-120b runs with low reasoning (it cannot turn reasoning off), and qwen3:8b runs with thinking off (`think: false`). The exact model ID and reasoning setting are recorded on every episode record (`model`, `reasoning_setting`, and the full `provider_config`).
+- **qwen3:8b context check passed (2026-09-24):** native context_length 40,960; with `num_ctx=32768`, prompts at 25/50/75/90% of the window were evaluated in full (8,011 / 17,111 / 26,216 / 31,676 tokens).
+- **Verified against the API (2026-09-24):**
+  - Tool-calling chat models available to this account: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `openai/gpt-oss-safeguard-20b`, `qwen/qwen3.8-27b`, all with 131,072-token context. `llama-3.3-70b-versatile` appears in Groq's docs but is not available to the account.
+  - Free-tier limits from response headers, for both gpt-oss-120b and qwen3.8-27b: 1,000 requests/day and 8,000 tokens/minute. Groq's docs give 200K tokens/day.
 
 ## Pre-freeze changes
 
