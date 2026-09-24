@@ -34,8 +34,18 @@ def _task_key(e: DetectorEvent) -> str:
 
 
 def numeric_params(e: DetectorEvent) -> dict[str, float]:
-    """Numeric parameters as `action.path` -> log1p(|value|); prices and amounts span orders of magnitude."""
+    """Numeric parameters as `action.path` -> log1p(|value|) (prices and amounts span orders of
+    magnitude), plus derived values from the audit before-values:
+      set_price.rel_price_change   (new - previous) / previous
+      issue_refund.refund_ratio    amount / order total
+    """
     out: dict[str, float] = {}
+    prev, total = e.audit.get("previous_price"), e.audit.get("order_total")
+    price, amount = e.params.get("price"), e.params.get("amount")
+    if e.action == "set_price" and prev and isinstance(price, (int, float)) and not isinstance(price, bool):
+        out["set_price.rel_price_change"] = (float(price) - prev) / prev
+    if e.action == "issue_refund" and total and isinstance(amount, (int, float)) and not isinstance(amount, bool):
+        out["issue_refund.refund_ratio"] = float(amount) / total
 
     def walk(prefix: str, v: object) -> None:
         if isinstance(v, bool):

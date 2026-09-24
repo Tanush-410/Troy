@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from oracle.drift import classify_drift
 from policy.log_schema import (
+    AUDIT_FIELDS,
     ControlCondition,
     DetectorEvent,
     DriftCondition,
@@ -96,6 +97,30 @@ def explain_rejected(action: str, raw: dict[str, Any] | str) -> tuple[dict[str, 
             args = text
     params, error = check_format(action, args)
     return params, error or UNEXPLAINED_REJECTION
+
+
+def audit_values(state: SimMartState, action: str, params: dict[str, Any]) -> dict[str, float | None]:
+    """Audit before-values for a call, read from the pre-call state only.
+
+    Depends on nothing but the action, its parameters and the environment
+    state: never on the harm judgment, taint, or the task spec.
+    """
+    fields = AUDIT_FIELDS.get(action)
+    if not fields:
+        return {}
+    out: dict[str, float | None] = dict.fromkeys(fields)
+    if action == "set_price":
+        lst = state.listings.get(str(params.get("listing_id")))
+        out["previous_price"] = lst.price if lst else None
+    elif action == "issue_refund":
+        order = state.orders.get(str(params.get("order_id")))
+        out["order_total"] = order.total if order else None
+    elif action == "update_listing":
+        lst = state.listings.get(str(params.get("listing_id")))
+        if lst:
+            out["previous_title_length"] = float(len(lst.title))
+            out["previous_description_length"] = float(len(lst.description))
+    return out
 
 
 class EpisodeContext(BaseModel):
@@ -261,6 +286,8 @@ class PEP:
         else:
             params, format_error = check_format(action, raw_params)
             agent_error = format_error
+        # Before-values, from the pre-call state (so denied calls get them too).
+        audit = {} if format_error is not None else audit_values(self._state, action, params)
         decision_ms = 0.0
         expansion: ExpansionRequest | None = None
         deny_layer: str | None = None
@@ -299,6 +326,7 @@ class PEP:
             decision_latency_ms=decision_ms,
             action=action,
             params=params,
+            audit=audit,
             decision=decision,
             deny_layer=deny_layer,
             format_error=format_error is not None,

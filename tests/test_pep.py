@@ -24,7 +24,7 @@ SECTION_7_FIELDS = {
     "harm", "harm_rule_ids", "executed", "tainted_context", "tokens_in", "tokens_out",
 }
 DETECTOR_ALLOWED = {"episode_id", "agent_role", "task_id", "task_type", "step", "timestamp",
-                    "latency_ms", "action", "params", "decision", "expansion_requested"}
+                    "latency_ms", "action", "params", "decision", "expansion_requested", "audit"}
 
 
 class NoHarm:

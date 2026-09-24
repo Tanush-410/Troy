@@ -41,10 +41,11 @@ def test_detector_package_cannot_import_labels_taint_or_transcripts():
                     assert {a.name for a in node.names} <= ALLOWED_FROM_LOG_SCHEMA, (path.name, node.names)
 
 
-def ev(step, action, decision="allow", task="t1", ttype="answer_query", params=None, exp=False, ep="e"):
+def ev(step, action, decision="allow", task="t1", ttype="answer_query", params=None, exp=False, ep="e",
+       audit=None):
     return DetectorEvent(episode_id=ep, agent_role="support", task_id=task, task_type=ttype, step=step,
                          timestamp="2026-01-01T00:00:00+00:00", latency_ms=1.0, action=action,
-                         params=params or {}, decision=decision, expansion_requested=exp)
+                         params=params or {}, decision=decision, expansion_requested=exp, audit=audit or {})
 
 
 CLEAN = [[ev(1, "read_ticket"), ev(2, "lookup_order"), ev(3, "reply_customer")] for _ in range(4)]

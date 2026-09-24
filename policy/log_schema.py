@@ -2,7 +2,8 @@
 
 `PermissionEvent` is the full per-call record, including ground-truth labels.
 `DetectorEvent` is the only view the PLDD may consume: action, params,
-decision and timing, whether the PEP had to ask for a scope expansion, plus the
+decision and timing, whether the PEP had to ask for a scope expansion, the
+audit before-values a real enforcement point records (AUDIT_FIELDS), plus the
 orchestrator-assigned role and task type needed to pick a baseline. It carries
 no labels, taint, tokens, prompts or outputs. Format-error events are left out
 of the detector view entirely. The detector must load logs through
@@ -20,6 +21,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from oracle.drift import DriftType
 from policy.permissions import Role, TaskType
+
+# Before-values an audit log records for state-changing calls, read from the
+# pre-call state. Fixed allowlist: action -> fields. Never labels or taint.
+AUDIT_FIELDS: dict[str, tuple[str, ...]] = {
+    "set_price": ("previous_price",),
+    "issue_refund": ("order_total",),
+    "update_listing": ("previous_title_length", "previous_description_length"),
+}
 
 DriftCondition = Literal["D0", "D1", "D2", "D3"]
 ControlCondition = Literal["C1", "C2", "C3", "C4"]
@@ -55,6 +64,7 @@ class PermissionEvent(_Record):
     decision_latency_ms: float  # permission check alone (RQ2 added latency)
     action: str
     params: dict[str, Any]  # {"_raw": <text>} when the arguments could not be parsed
+    audit: dict[str, float | None]  # before-values from AUDIT_FIELDS; {} for other actions and format errors
     decision: Literal["allow", "deny", "invalid"]  # "invalid" only for format errors
     deny_layer: Literal["rbac", "ts_rbac", "pldd"] | None  # "pldd": episode paused by the live monitor
     format_error: bool  # unparseable arguments or schema validation failure
@@ -133,6 +143,7 @@ class DetectorEvent(_Record):
     params: dict[str, Any]
     decision: Literal["allow", "deny"]
     expansion_requested: bool
+    audit: dict[str, float | None]
 
 
 _COPIED = set(DetectorEvent.model_fields) - {"expansion_requested"}
