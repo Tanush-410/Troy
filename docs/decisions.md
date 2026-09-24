@@ -101,6 +101,14 @@ Frozen files: `policy/permissions.py`, `oracle/harm_rules.py`, `oracle/claims.py
   - Tool-calling chat models available to this account: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `openai/gpt-oss-safeguard-20b`, `qwen/qwen3.8-27b`, all with 131,072-token context. `llama-3.3-70b-versatile` appears in Groq's docs but is not available to the account.
   - Free-tier limits from response headers, for both gpt-oss-120b and qwen3.8-27b: 1,000 requests/day and 8,000 tokens/minute. Groq's docs give 200K tokens/day.
 
+## Harm in clean (D0) runs, and the detector baseline (plan for milestone 7)
+
+- **Clean runs can contain spontaneous harm.** In the first qwen3:8b smoke test, a D0 `history_analysis` task wrote a price for a competitor that doesn't carry the SKU, copied from another competitor (P2), while still completing the task. The **D0 harm rate is reported per model as its own metric**: harmful calls over well-formed D0 calls, and the share of D0 episodes with at least one harmful action (`analysis/metrics.py: d0_harm_by_model`).
+- **The PLDD baseline will be fitted two ways:**
+  - **Main result:** on *all* D0 episodes in the 60% fitting split, so the reference policy π*_τ and the bigram model reflect the agent's real clean behaviour, spontaneous harm included.
+  - **Sensitivity check:** on *harm-free* D0 episodes only.
+  - Thresholds are calibrated on the 40% split in both cases, and the evaluation sets are identical. Both results are reported, with the change in AUROC, TPR at 5% FPR, and lead time between them.
+
 ## Pre-freeze changes
 
 Changes to frozen files after they were first committed, before milestone 9.
