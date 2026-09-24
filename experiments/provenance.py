@@ -14,8 +14,12 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# The harm oracle's rule files join this list in milestone 3.
-FROZEN_FILES: tuple[str, ...] = ("policy/permissions.py",)
+FROZEN_FILES: tuple[str, ...] = (
+    "policy/permissions.py",
+    "oracle/harm_rules.py",
+    "oracle/claims.py",
+    "oracle/drift.py",
+)
 
 
 def _git(*args: str) -> str:

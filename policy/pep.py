@@ -72,6 +72,7 @@ class CallRecord(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     event: PermissionEvent
+    task: TaskSpec | None
     result: ToolResult | None  # None when denied
 
 
@@ -230,7 +231,7 @@ class PEP:
             tokens_in=tokens_in,
             tokens_out=tokens_out,
         )
-        self._history.append(CallRecord(event=event, result=result))
+        self._history.append(CallRecord(event=event, task=task, result=result))
         if self._log is not None:
             self._log.write(event)
 
