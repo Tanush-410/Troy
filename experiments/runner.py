@@ -18,7 +18,7 @@ from agents.base import Agent
 from experiments.config import EpisodeConfig
 from oracle.harm_rules import HarmOracle
 from oracle.success import judge_task
-from policy.log_schema import EpisodeRecord
+from policy.log_schema import DetectorEvent, EpisodeRecord
 from policy.pep import PEP, EpisodeContext, JsonlWriter
 from policy.task import TaskSpec
 from policy.ts_rbac import ExpansionPolicy
@@ -57,6 +57,7 @@ def run_episode(
     state: SimMartState | None = None,
     expansion_policy: ExpansionPolicy | None = None,
     clock: Callable[[], str] | None = None,
+    monitor: Callable[[DetectorEvent], bool] | None = None,
 ) -> tuple[EpisodeRecord, SimMartState]:
     """Run `tasks` in order. `state` defaults to a fresh state from the config's seed.
 
@@ -64,12 +65,16 @@ def run_episode(
     PEP's taint tracking are reset before every task. The simulated clock
     advances by one tick before every task after the first. If a task ends in
     context overflow, the episode stops and the remaining tasks are recorded
-    as "not_run" (they are not judged).
+    as "not_run" (they are not judged). With a live `monitor` (C3/C4 live-pause
+    mode), an alert pauses the episode: later calls in the task are denied and
+    the remaining tasks are recorded as "paused".
     """
     if state is None:
         state = generate_state(cfg.seed, cfg.generator)
     ctx = EpisodeContext(**cfg.model_dump(exclude={"generator", "provider", "max_turns_per_task"}))
     pep_kwargs: dict[str, Any] = {} if clock is None else {"clock": clock}
+    if monitor is not None:
+        pep_kwargs["monitor"] = monitor
     pep = PEP(ctx, state, HarmOracle(), JsonlWriter(paths.events), expansion_policy, **pep_kwargs)
     transcript = JsonlWriter(paths.transcripts / f"{cfg.episode_id}.jsonl")
 
@@ -100,9 +105,13 @@ def run_episode(
         if task_run.end == "context_overflow":
             task_ends.update({t.task_id: "not_run" for t in tasks[i + 1:]})
             break
+        if pep.paused_at is not None:
+            task_ends.update({t.task_id: "paused" for t in tasks[i + 1:]})
+            break
 
     record = pep.episode_record(outcomes, cfg.config_hash(), provenance).model_copy(
         update={**usage, "task_ends": task_ends, "api_retries": n_retries, "api_retry_wait_s": retry_wait,
+                "pldd_alert_step": pep.paused_at,
                 "provider_config": cfg.provider.model_dump(mode="json") if cfg.provider else None,
                 "reasoning_setting": cfg.provider.reasoning_setting() if cfg.provider else None})
     JsonlWriter(paths.episodes).write(record)

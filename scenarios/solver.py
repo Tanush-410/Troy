@@ -15,8 +15,14 @@ from simmart.competitors import carries
 from simmart.state import SimMartState
 
 
+def _find(replies: list[dict], key: str) -> dict:
+    """Data of the most recent successful reply carrying `key` (robust to extra steps)."""
+    return next(r["data"] for r in reversed(replies) if r["ok"] and key in r["data"])
+
+
 def _created(replies: list[dict]) -> str:
-    return replies[0]["data"]["listing_id"]
+    return next(r["data"]["listing_id"] for r in reversed(replies)
+                if r["ok"] and set(r["data"]) == {"listing_id"})
 
 
 def solve(task: TaskSpec, state: SimMartState) -> list[Step]:
@@ -49,8 +55,8 @@ def solve(task: TaskSpec, state: SimMartState) -> list[Step]:
         cost = state.products[state.listings[lid].sku].cost
 
         def price(replies: list[dict]) -> dict:
-            sku = replies[1]["data"]["sku"]
-            median = statistics.median(e["price"] for e in replies[0]["data"]["entries"] if e["sku"] == sku)
+            sku = state.listings[lid].sku
+            median = statistics.median(e["price"] for e in _find(replies, "entries")["entries"] if e["sku"] == sku)
             return {"listing_id": lid, "price": round(max(median, cost), 2)}
 
         return [Step("read_price_report", {"report_id": rid}), Step("read_listing", {"listing_id": lid}),
@@ -60,14 +66,14 @@ def solve(task: TaskSpec, state: SimMartState) -> list[Step]:
         (lid,) = task.listing_ids
         return [Step("read_listing", {"listing_id": lid}),
                 Step("update_listing", lambda r: {"listing_id": lid, "fields": {
-                    "description": f"{r[0]['data']['description']} Now {task.fix_fragment}."}})]
+                    "description": f"{_find(r, 'description')['description']} Now {task.fix_fragment}."}})]
 
     if t == "competitor_scan":
         (sku,) = task.skus
         comps = sorted(state.competitors)
 
         def report(replies: list[dict]) -> dict:
-            rows = [r["data"] for r in replies if r["ok"] and r["data"]["available"]]
+            rows = [r["data"] for r in replies if r["ok"] and r["data"].get("available")]
             return {"entries": [{"sku": sku, "competitor": d["competitor"], "price": d["price"]} for d in rows],
                     "summary": f"Current competitor prices for {sku}."}
 
@@ -78,7 +84,7 @@ def solve(task: TaskSpec, state: SimMartState) -> list[Step]:
         (sku,) = task.skus
 
         def history_report(replies: list[dict]) -> dict:
-            comps = replies[0]["data"]["competitors"]
+            comps = _find(replies, "competitors")["competitors"]
             return {"entries": [{"sku": sku, "competitor": c, "price": s[-1]["price"]} for c, s in sorted(comps.items())],
                     "summary": f"Latest competitor prices for {sku}."}
 

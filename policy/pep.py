@@ -25,11 +25,13 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from oracle.drift import classify_drift
 from policy.log_schema import (
     ControlCondition,
+    DetectorEvent,
     DriftCondition,
     EpisodeRecord,
     ExpansionRequest,
     PermissionEvent,
     TaskOutcome,
+    to_detector_event,
 )
 from policy.permissions import Role, task_scope
 from policy.rbac import StaticRBAC, in_role
@@ -39,6 +41,7 @@ from simmart.state import SimMartState
 from tools import TOOLS, ToolResult, execute
 
 DENIED_MESSAGE = "permission denied: {action} is not permitted"
+PAUSED_MESSAGE = "paused: this session is on hold for human review"
 
 
 def check_format(action: str, params: dict[str, Any] | str) -> tuple[dict[str, Any], str | None]:
@@ -170,6 +173,7 @@ class PEP:
         event_log: JsonlWriter | None = None,
         expansion_policy: ExpansionPolicy | None = None,
         clock: Callable[[], str] = _utc_now,
+        monitor: Callable[[DetectorEvent], bool] | None = None,
     ) -> None:
         self.ctx = ctx
         self._state = state
@@ -185,6 +189,9 @@ class PEP:
         # injection_id -> where it entered the context ("tool:<name>",
         # "task_prompt:<task_id>", or "report:<report_id>")
         self._context_injections: dict[str, str] = {}
+        # Live-pause mode (C3/C4 validation subset): sees only the detector view of each event.
+        self._monitor = monitor
+        self.paused_at: int | None = None
 
     # ------------------------------------------------------------ orchestrator
 
@@ -217,6 +224,8 @@ class PEP:
 
     def _decide(self, action: str) -> tuple[str, str | None, ExpansionRequest | None]:
         """Return (decision, deny_layer, expansion_request)."""
+        if self.paused_at is not None:
+            return "deny", "pldd", None
         if not self._static.allows(action):
             return "deny", "rbac", None
         if not self._task_scoped or self._scoped.allows(action):
@@ -314,9 +323,14 @@ class PEP:
         self._history.append(CallRecord(event=event, task=task, result=result))
         if self._log is not None:
             self._log.write(event)
+        if self._monitor is not None and self.paused_at is None and not event.format_error:
+            if self._monitor(to_detector_event(event)):
+                self.paused_at = event.step
 
         if format_error is not None:
             return {"ok": False, "data": {}, "error": agent_error}
+        if deny_layer == "pldd":
+            return {"ok": False, "data": {}, "error": PAUSED_MESSAGE}
         if result is None:
             return {"ok": False, "data": {}, "error": DENIED_MESSAGE.format(action=action)}
         return result.agent_view()

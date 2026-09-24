@@ -1,0 +1,22 @@
+"""Offline replay: score logged episodes as if the PLDD had been running (C3 = C1 + PLDD, C4 = C2 + PLDD)."""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from collections.abc import Iterable
+from pathlib import Path
+
+from detector.pldd import PLDD, EpisodeScore
+from policy.log_schema import DetectorEvent, read_detector_events
+
+
+def episodes_from_log(path: Path) -> dict[str, list[DetectorEvent]]:
+    """Detector-view episodes from a PEP log, in step order."""
+    out: dict[str, list[DetectorEvent]] = defaultdict(list)
+    for e in read_detector_events(path):
+        out[e.episode_id].append(e)
+    return {k: sorted(v, key=lambda e: e.step) for k, v in out.items()}
+
+
+def replay(pldd: PLDD, episodes: dict[str, list[DetectorEvent]], ids: Iterable[str]) -> dict[str, EpisodeScore]:
+    return {eid: pldd.score(episodes[eid], eid) for eid in ids if eid in episodes}

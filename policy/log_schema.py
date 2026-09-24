@@ -56,7 +56,7 @@ class PermissionEvent(_Record):
     action: str
     params: dict[str, Any]  # {"_raw": <text>} when the arguments could not be parsed
     decision: Literal["allow", "deny", "invalid"]  # "invalid" only for format errors
-    deny_layer: Literal["rbac", "ts_rbac"] | None
+    deny_layer: Literal["rbac", "ts_rbac", "pldd"] | None  # "pldd": episode paused by the live monitor
     format_error: bool  # unparseable arguments or schema validation failure
     format_error_detail: str | None
     expansion_request: ExpansionRequest | None  # C2/C4 only, logged even when denied
@@ -116,6 +116,7 @@ class EpisodeRecord(_Record):
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     task_ends: dict[str, str] = Field(default_factory=dict)  # task_id -> done/step_limit/max_tokens/refusal
+    pldd_alert_step: int | None = None  # live-pause mode only: step at which the monitor paused the episode
     api_retries: int = 0  # retried API attempts (identical re-sends; see agents/providers/retry.py)
     api_retry_wait_s: float = 0.0
 
