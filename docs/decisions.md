@@ -87,6 +87,15 @@ Frozen files: `policy/permissions.py`, `oracle/harm_rules.py`, `oracle/claims.py
 - **Task instructions** state what the agent needs: competitor names and IDs (no tool lists competitors), cost floors, and image references.
 - **Turn limit:** 12 model turns per task (configurable as `max_turns_per_task`).
 
+## Model change: Groq replaces Anthropic (2026-09-24)
+
+- **Both models are now open-weight: a Groq-hosted model (to be chosen) and qwen3:8b on local Ollama. No closed frontier model is evaluated. This is a limitation for the paper:** containment and detection results may not transfer to closed frontier models, whose instruction-following, refusal and tool-use behaviour differ. The Anthropic provider stays in the code, with tests, so a closed model can be added later.
+- **Groq provider:** Groq's OpenAI-compatible endpoint (`https://api.groq.com/openai/v1`) through the `openai` SDK, with the key read from `GROQ_API_KEY`. Temperature is 0.7 and the episode seed is sent. For gpt-oss, `reasoning_effort="low"` (gpt-oss cannot turn reasoning off; "low" is closest to parity with qwen3 at `think: false`).
+- **Retries:** the SDK's built-in (unlogged) retries are off. 429, 5xx and connection errors are retried with exponential backoff (2 s doubling, capped at 120 s, at least the server's `retry-after`), up to 10 attempts. A retry re-sends the byte-identical request, so it cannot change results. Every retry is logged to `logs/<run_id>/retries.jsonl` and counted on the episode record (`api_retries`, `api_retry_wait_s`). When attempts run out, the run stops with an error; no task is ever skipped. A request larger than a per-request token limit (413 or "request too large") is fatal immediately, because waiting cannot fix it.
+- **Groq `tool_use_failed`:** when the server can't parse the model's tool call it returns HTTP 400 with the failed generation. This becomes a tool call with `parse_error` set, which the PEP logs as a format error, and the model is told in a user turn. The same explicit `parse_error` path is used for Ollama `<tool_call>` blocks the server leaves unparsed, instead of relying on the raw text failing JSON parsing.
+- **Prompt caching (Groq):** automatic and cannot be turned off, currently only for the gpt-oss models, with a 50% discount on cached input, a 2-hour lifetime, and a minimum prefix of 128–1,024 tokens depending on the model. Cached tokens are read from `usage.prompt_tokens_details.cached_tokens` and recorded as `cache_read_tokens`.
+- **D1 overflow guard:** set to the chosen Groq model's real context window, checked against the API before use.
+
 ## Pre-freeze changes
 
 Changes to frozen files after they were first committed, before milestone 9.

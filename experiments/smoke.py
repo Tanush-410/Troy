@@ -1,8 +1,9 @@
 """Milestone 5 smoke test: one D0 / C1 episode per agent role with a real model.
 
 Prints a token and cost estimate and exits unless --yes is given:
-    uv run python -m experiments.smoke --model haiku           # estimate only
-    uv run python -m experiments.smoke --model haiku --yes     # run
+    uv run python -m experiments.smoke --model groq --groq-model openai/gpt-oss-120b         # estimate
+    uv run python -m experiments.smoke --model groq --groq-model openai/gpt-oss-120b --yes   # run
+    uv run python -m experiments.smoke --model qwen3 --yes
 """
 
 from __future__ import annotations
@@ -32,9 +33,24 @@ MAX_TURNS = 12
 TEMPERATURE = 0.7  # fixed for every model (see docs/decisions.md)
 QWEN3_NUM_CTX = 32_768  # qwen3:8b's native window, set explicitly on every request
 
+GROQ_URL = "https://api.groq.com/openai/v1"
+# Candidate Groq models -> context window (docs, 2026-09-24; checked against the API before use).
+GROQ_CANDIDATES: dict[str, int] = {
+    "openai/gpt-oss-120b": 131_072,
+    "llama-3.3-70b-versatile": 131_072,
+    "qwen/qwen3.8-27b": 131_072,
+}
+# gpt-oss reasons on every request and cannot turn it off; "low" is the closest to parity.
+REASONING_EFFORT = {"openai/gpt-oss-120b": "low"}
+
+
+def groq_config(model: str) -> ProviderConfig:
+    return ProviderConfig(kind="openai_compat", model=model, context_window=GROQ_CANDIDATES[model],
+                          base_url=GROQ_URL, api_key_env="GROQ_API_KEY", temperature=TEMPERATURE, seed=SEED,
+                          reasoning_effort=REASONING_EFFORT.get(model))
+
+
 PRESETS: dict[str, ProviderConfig] = {
-    "haiku": ProviderConfig(kind="anthropic", model="claude-haiku-4-5-20251001", context_window=200_000,
-                            temperature=TEMPERATURE, api_key_env="ANTHROPIC_API_KEY"),
     "qwen3": ProviderConfig(kind="ollama", model="qwen3:8b", context_window=QWEN3_NUM_CTX,
                             temperature=TEMPERATURE, seed=SEED, base_url="http://localhost:11434",
                             think=False),  # parity: Haiku runs without extended thinking
@@ -65,11 +81,17 @@ PLAN: list[tuple[Role, Callable[[SimMartState], list[TaskSpec]]]] = [
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", choices=sorted(PRESETS), required=True)
+    ap.add_argument("--model", choices=sorted(PRESETS) + ["groq"], required=True)
+    ap.add_argument("--groq-model", choices=sorted(GROQ_CANDIDATES))
     ap.add_argument("--yes", action="store_true", help="actually run (spends API money for paid models)")
     ap.add_argument("--root", type=Path, default=Path("."))
     args = ap.parse_args()
-    provider_cfg = PRESETS[args.model]
+    if args.model == "groq":
+        if not args.groq_model:
+            ap.error("--groq-model is required with --model groq")
+        provider_cfg = groq_config(args.groq_model)
+    else:
+        provider_cfg = PRESETS[args.model]
 
     est = estimate(provider_cfg.model, [(role, 2, True) for role, _ in PLAN], MAX_TURNS)
     print(f"Smoke test: {provider_cfg.model}, {est.episodes} episodes, {est.tasks} tasks, D0/C1")
@@ -87,7 +109,7 @@ def main() -> None:
     prov = frozen_provenance()
     if prov["any_dirty"]:
         print("warning: frozen files have uncommitted changes (acceptable for a smoke test)", file=sys.stderr)
-    run_id = f"smoke-{args.model}"
+    run_id = f"smoke-{args.model}" + (f"-{args.groq_model.replace('/', '_')}" if args.groq_model else "")
     paths = RunPaths.for_run(args.root, run_id)
     provider = make_provider(provider_cfg)
     records = []

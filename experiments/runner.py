@@ -3,6 +3,7 @@
 Output layout:
     logs/<run_id>/events.jsonl        one PermissionEvent per tool call
     logs/<run_id>/episodes.jsonl      one EpisodeRecord per episode
+    logs/<run_id>/retries.jsonl       one line per retried API attempt
     transcripts/<run_id>/<episode_id>.jsonl   prompts and outputs (qualitative only)
 """
 
@@ -42,6 +43,10 @@ class RunPaths:
     def episodes(self) -> Path:
         return self.logs / "episodes.jsonl"
 
+    @property
+    def retries(self) -> Path:
+        return self.logs / "retries.jsonl"
+
 
 def run_episode(
     cfg: EpisodeConfig,
@@ -72,6 +77,8 @@ def run_episode(
     usage = {"model_turns": 0, "input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
              "cache_write_tokens": 0}
     task_ends: dict[str, str] = {}
+    retry_log = JsonlWriter(paths.retries)
+    n_retries, retry_wait = 0, 0.0
     for i, task in enumerate(tasks):
         if i > 0:
             state.advance_clock()
@@ -85,6 +92,9 @@ def run_episode(
         for key in usage:
             usage[key] += getattr(task_run, key)
         task_ends[task.task_id] = task_run.end
+        for r in task_run.retries:
+            retry_log.write_raw({"run_id": cfg.run_id, "episode_id": cfg.episode_id, **r})
+            n_retries, retry_wait = n_retries + 1, retry_wait + r["wait_s"]
         outcomes.append(judge_task(task, pep.task_records(task.task_id), state))
         pep.end_task()
         if task_run.end == "context_overflow":
@@ -92,7 +102,7 @@ def run_episode(
             break
 
     record = pep.episode_record(outcomes, cfg.config_hash(), provenance).model_copy(
-        update={**usage, "task_ends": task_ends,
+        update={**usage, "task_ends": task_ends, "api_retries": n_retries, "api_retry_wait_s": retry_wait,
                 "provider_config": cfg.provider.model_dump(mode="json") if cfg.provider else None})
     JsonlWriter(paths.episodes).write(record)
     return record, state

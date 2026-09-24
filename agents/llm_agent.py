@@ -59,10 +59,11 @@ class LLMAgent:
             run.output_tokens += turn.usage.output_tokens
             run.cache_read_tokens += turn.usage.cache_read_tokens
             run.cache_write_tokens += turn.usage.cache_write_tokens
+            run.retries.extend({"task_id": task.task_id, "turn": run.model_turns, **r} for r in turn.retries)
             run.transcript.append({
                 "role": "assistant", "task_id": task.task_id, "text": turn.text,
                 "tool_calls": [asdict(c) for c in turn.tool_calls],
-                "stop_reason": turn.raw_stop_reason, "usage": asdict(turn.usage),
+                "stop_reason": turn.raw_stop_reason, "usage": asdict(turn.usage), "retries": turn.retries,
             })
             if not turn.tool_calls:
                 run.end = END_REASONS.get(turn.stop_reason, "done")
@@ -72,7 +73,7 @@ class LLMAgent:
             for i, call in enumerate(turn.tool_calls):
                 # A turn's tokens are attributed to its first tool call.
                 t_in, t_out = (turn.usage.total_input, turn.usage.output_tokens) if i == 0 else (0, 0)
-                reply = gateway.call(call.name, call.arguments, t_in, t_out)
+                reply = gateway.call(call.name, call.arguments, t_in, t_out, parse_error=call.parse_error)
                 content = json.dumps(reply, sort_keys=True, default=str)
                 outcomes.append(ToolOutcome(call_id=call.id, content=content, is_error=not reply["ok"]))
                 run.transcript.append({"role": "tool", "task_id": task.task_id, "call_id": call.id,

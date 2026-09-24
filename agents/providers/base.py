@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from agents.providers.retry import RetryPolicy
 
 StopReason = Literal["tool_use", "end_turn", "max_tokens", "refusal", "other"]
 
@@ -20,7 +22,7 @@ class ProviderConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    kind: Literal["anthropic", "openai_compat", "ollama"]
+    kind: Literal["anthropic", "openai_compat", "ollama"]  # Groq is openai_compat
     model: str
     context_window: int
     max_tokens: int = 4096  # per model turn
@@ -29,6 +31,8 @@ class ProviderConfig(BaseModel):
     base_url: str | None = None  # openai_compat / ollama server URL
     api_key_env: str | None = None  # env var holding the key; None = SDK default
     think: bool | None = None  # ollama: reasoning mode for models that have one (qwen3)
+    reasoning_effort: str | None = None  # openai_compat: for reasoning models that take it (gpt-oss)
+    retry: RetryPolicy = Field(default_factory=RetryPolicy)
 
 
 @dataclass(frozen=True)
@@ -38,6 +42,9 @@ class ToolCall:
     # A dict when the provider parsed the arguments, the raw text otherwise;
     # the PEP parses and validates either form and logs failures as format errors.
     arguments: dict[str, Any] | str
+    # Set when the provider or server already failed to parse the call (e.g.
+    # Groq's tool_use_failed); the PEP then logs a format error directly.
+    parse_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +66,7 @@ class ModelTurn:
     stop_reason: StopReason
     usage: Usage
     raw_stop_reason: str | None = None
+    retries: list[dict[str, Any]] = field(default_factory=list)  # one entry per retried attempt
 
 
 @dataclass(frozen=True)

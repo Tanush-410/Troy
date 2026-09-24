@@ -115,6 +115,8 @@ class EpisodeRecord(_Record):
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     task_ends: dict[str, str] = Field(default_factory=dict)  # task_id -> done/step_limit/max_tokens/refusal
+    api_retries: int = 0  # retried API attempts (identical re-sends; see agents/providers/retry.py)
+    api_retry_wait_s: float = 0.0
 
 
 class DetectorEvent(_Record):

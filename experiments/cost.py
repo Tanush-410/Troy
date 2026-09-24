@@ -29,6 +29,9 @@ class Price:
 PRICES: dict[str, Price] = {
     "claude-haiku-4-5-20251001": Price(input=1.00, output=5.00),
     "claude-haiku-4-5": Price(input=1.00, output=5.00),
+    # Groq, from console.groq.com/docs/model/openai/gpt-oss-120b (2026-09-24);
+    # prompt caching is automatic with a 50% discount on cached input.
+    "openai/gpt-oss-120b": Price(input=0.15, output=0.60, cache_write_mult=1.0, cache_read_mult=0.5),
 }
 
 

@@ -81,9 +81,10 @@ class OllamaSession:
             fn = c["function"]
             calls.append(ToolCall(id=f"call_{self._n}", name=fn["name"], arguments=fn.get("arguments", {})))
         for name, raw in unparsed_tool_calls(content):
-            # Submitted as raw text so the PEP logs it as a format error.
+            # The server left this call unparsed; the PEP logs it as a format error.
             self._n += 1
-            calls.append(ToolCall(id=f"call_{self._n}", name=name, arguments=raw))
+            calls.append(ToolCall(id=f"call_{self._n}", name=name, arguments=raw,
+                                  parse_error="server did not parse <tool_call> block"))
         text = _TOOL_CALL.sub("", _THINK.sub("", content)).strip()
         done = r.get("done_reason")
         return ModelTurn(

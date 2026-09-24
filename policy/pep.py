@@ -201,7 +201,8 @@ class PEP:
         return ("allow", None, request) if granted else ("deny", "ts_rbac", request)
 
     def _handle(
-        self, action: str, raw_params: dict[str, Any] | str, tokens_in: int, tokens_out: int
+        self, action: str, raw_params: dict[str, Any] | str, tokens_in: int, tokens_out: int,
+        parse_error: str | None = None,
     ) -> dict[str, Any]:
         t0 = time.perf_counter()
         self._step += 1
@@ -213,6 +214,9 @@ class PEP:
         # Format errors are checked first: they get no permission decision,
         # no drift type and no harm judgment, and nothing executes.
         params, format_error = check_format(action, raw_params)
+        if parse_error is not None:  # the provider already failed to parse this call
+            params = raw_params if isinstance(raw_params, dict) else {"_raw": raw_params}
+            format_error = f"tool call could not be parsed: {parse_error}"
         decision_ms = 0.0
         expansion: ExpansionRequest | None = None
         deny_layer: str | None = None
@@ -325,11 +329,13 @@ class AgentGateway:
 
     __slots__ = ("_submit",)
 
-    def __init__(self, submit: Callable[[str, dict[str, Any] | str, int, int], dict[str, Any]]) -> None:
+    def __init__(self, submit: Callable[..., dict[str, Any]]) -> None:
         self._submit = submit
 
     def call(
-        self, action: str, params: dict[str, Any] | str, tokens_in: int = 0, tokens_out: int = 0
+        self, action: str, params: dict[str, Any] | str, tokens_in: int = 0, tokens_out: int = 0,
+        parse_error: str | None = None,
     ) -> dict[str, Any]:
-        """Submit a tool call. `params` may be the model's raw argument text."""
-        return self._submit(action, params, tokens_in, tokens_out)
+        """Submit a tool call. `params` may be the model's raw argument text;
+        `parse_error` marks a call the provider already failed to parse."""
+        return self._submit(action, params, tokens_in, tokens_out, parse_error)

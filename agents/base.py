@@ -25,6 +25,7 @@ class TaskRun:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    retries: list[dict[str, Any]] = field(default_factory=list)  # API retries, with task_id
     end: str = "done"  # done | step_limit | max_tokens | refusal | context_overflow
 
 
