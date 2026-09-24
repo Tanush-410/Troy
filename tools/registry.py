@@ -9,6 +9,7 @@ or malformed arguments; a rejected call leaves state unchanged.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable
 from typing import Any
 
@@ -36,6 +37,29 @@ class ToolResult(BaseModel):
         return {"ok": self.ok, "data": self.data, "error": self.error}
 
 
+def inline_refs(schema: dict[str, Any]) -> dict[str, Any]:
+    """Replace every local "$ref" with the definition it points to and drop "$defs".
+
+    Some model servers do not resolve $ref when rendering tool schemas for the
+    model, so every provider gets fully inlined schemas.
+    """
+    defs = schema.get("$defs", {})
+
+    def resolve(node: Any) -> Any:
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/$defs/"):
+                target = copy.deepcopy(defs[ref.split("/")[-1]])
+                rest = {k: v for k, v in node.items() if k != "$ref"}
+                return resolve({**target, **rest})
+            return {k: resolve(v) for k, v in node.items() if k != "$defs"}
+        if isinstance(node, list):
+            return [resolve(v) for v in node]
+        return node
+
+    return resolve(schema)
+
+
 class ToolError(Exception):
     """Raised by a tool implementation for an impossible call."""
 
@@ -54,7 +78,7 @@ class ToolSpec(BaseModel):
 
     def json_schema(self) -> dict[str, Any]:
         """OpenAI-style function schema, the format both provider types accept."""
-        params = self.args_model.model_json_schema()
+        params = inline_refs(self.args_model.model_json_schema())
         params.pop("title", None)
         return {
             "type": "function",

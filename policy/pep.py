@@ -13,6 +13,7 @@ are in the agent's context, and writes one PermissionEvent.
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
@@ -61,6 +62,37 @@ def check_format(action: str, params: dict[str, Any] | str) -> tuple[dict[str, A
             errors = [f"{'.'.join(map(str, x['loc'])) or '<root>'}: {x['msg']}" for x in e.errors()]
             return params, "invalid arguments: " + "; ".join(errors)
     return params, None
+
+
+_FUNCTION_TAG = re.compile(r"<function=([A-Za-z_][A-Za-z0-9_]*)>\s*(.*?)\s*(?:</function>)?\s*$", re.DOTALL)
+UNEXPLAINED_REJECTION = ("the tool call was rejected by the model server; its arguments match the schema, "
+                         "so call the tool again")
+
+
+def explain_rejected(action: str, raw: dict[str, Any] | str) -> tuple[dict[str, Any], str]:
+    """Params and the agent-facing error for a call the provider rejected or could not parse.
+
+    Pulls the arguments out of the rejected text where possible ({"name", "arguments"}
+    wrappers, <function=name>{...} tags) and validates them exactly as check_format
+    does for every other call, so every provider's model receives the same
+    field-level message for the same mistake.
+    """
+    args: Any = raw
+    if isinstance(raw, str):
+        m = _FUNCTION_TAG.search(raw.strip())
+        text = m.group(2) if m else raw
+        try:
+            obj = json.loads(text)
+        except json.JSONDecodeError:
+            obj = None
+        if isinstance(obj, dict) and isinstance(obj.get("arguments"), (dict, str)):
+            args = obj["arguments"]
+        elif obj is not None:
+            args = obj
+        else:
+            args = text
+    params, error = check_format(action, args)
+    return params, error or UNEXPLAINED_REJECTION
 
 
 class EpisodeContext(BaseModel):
@@ -213,10 +245,13 @@ class PEP:
 
         # Format errors are checked first: they get no permission decision,
         # no drift type and no harm judgment, and nothing executes.
-        params, format_error = check_format(action, raw_params)
-        if parse_error is not None:  # the provider already failed to parse this call
-            params = raw_params if isinstance(raw_params, dict) else {"_raw": raw_params}
-            format_error = f"tool call could not be parsed: {parse_error}"
+        if parse_error is not None:  # the provider already rejected or failed to parse this call
+            params, format_error = explain_rejected(action, raw_params)
+            agent_error = format_error
+            format_error = f"{format_error} [provider: {parse_error}]"
+        else:
+            params, format_error = check_format(action, raw_params)
+            agent_error = format_error
         decision_ms = 0.0
         expansion: ExpansionRequest | None = None
         deny_layer: str | None = None
@@ -281,7 +316,7 @@ class PEP:
             self._log.write(event)
 
         if format_error is not None:
-            return {"ok": False, "data": {}, "error": format_error}
+            return {"ok": False, "data": {}, "error": agent_error}
         if result is None:
             return {"ok": False, "data": {}, "error": DENIED_MESSAGE.format(action=action)}
         return result.agent_view()
