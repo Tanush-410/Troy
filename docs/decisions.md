@@ -147,6 +147,19 @@ Frozen files: `policy/permissions.py`, `oracle/harm_rules.py`, `oracle/claims.py
 - **Live-pause mode:** the PEP takes an optional monitor that sees each event's detector view. On an alert, every later call is denied with `deny_layer="pldd"` and the agent is told it is paused for review. The runner stops the episode, records the remaining tasks as "paused", and records `pldd_alert_step`.
 - **Scripted known-drift dataset** (`experiments/scripted_dataset.py`): the reference solver plus drift actions by condition, used to test the detector and the analysis pipeline. On 16 episodes per cell, weighted-sum AUROC is above 0.7 for every drift condition, control, and baseline (tested).
 
+## Milestone 8: analysis pipeline
+
+- **One command:** `uv run python -m analysis.run_all logs/<run_id> [...] --out results` regenerates every CSV table, every PNG figure, `summary.md` and `index.json` from the logs. Cells without data are written as "n/a" and nothing is ever filled in by hand. Two runs on the same logs produce identical tables (tested).
+- **Resampling unit:** every 95% CI is a percentile bootstrap over **episodes** (2,000 resamples, seed 12345). Rates over calls or tasks are ratios of sums across the resampled episodes, because events within an episode aren't independent. AUROC CIs resample the evaluation population's episodes.
+- **Tests:** Fisher's exact test for C1 vs C2 rates, with episodes as the unit (episodes with any executed harm; tasks for success). Mann–Whitney U for lead times, C3 vs C4.
+- **Tables** (all per model and per agent, with an "all" row):
+  - `rq1_drift_types`: the Type I/II/III split, harm inside permitted actions, and the share of harmful calls RBAC blocked.
+  - `rq2_controls`: executed and attempted harm, task success and decision latency, C1 vs C2.
+  - `rq3_detection`: AUROC with CI, TPR at 5% FPR, held-out FPR, share alerted before first harm, median lead; for both combiners and D_t, both baselines, C3 and C4.
+  - `rq3_lead_time_tests`, `ablation`, `d0_harm`, `format_errors`, `context_overflow_escalation` (overflow, turn limit, escalation, API retries), `cross_agent_taint`.
+- **Figures:** ROC curves per drift condition (both combiners), harm-rate bars with CIs (C1 vs C2), and D_t with the PLDD score over time for one representative episode per drift condition. The representative episode is the detected harmful episode with the median lead time, with alert and first-harm steps marked.
+- **Known artifact:** D_t and the other features are computed on windows shorter than `w` during an episode's first few steps, which inflates D_t there. The figures show it as is.
+
 ## Pre-freeze changes
 
 Changes to frozen files after they were first committed, before milestone 9.

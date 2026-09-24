@@ -57,3 +57,19 @@ Short summaries appended after each milestone.
 
 **Please check:**
 - The split (25% held out, then 60/40), and whether "positive = any harmful action" is the definition you want for RQ3.
+
+## Milestone 8: analysis pipeline (2026-09-24)
+
+**Built:**
+- `analysis/stats.py`: episode-level bootstrap, Fisher's exact test, Mann–Whitney U.
+- `analysis/tables.py`: RQ1, RQ2, RQ3, lead-time tests, ablation, D0 harm, format errors, context overflow and escalation, cross-agent taint.
+- `analysis/figures.py`: ROC curves, harm bars, D_t timelines.
+- `analysis/run_all.py`: regenerates everything into `results/`, plus a `summary.md` you can paste to your co-writer.
+
+**Tests:** 434 in total. Statistics units, every output file written, RQ1 counts equal to raw log counts, RQ2 rates equal to direct computation, CIs bracketing their point estimates, RQ3 and ablation coverage, a summary with every section and no NaN, and identical tables on regeneration.
+
+**Scripted check:** 8 episodes per cell, 192 episodes; `run_all` takes about 70 seconds. The numbers are scripted and not findings.
+
+**Please check:**
+- The summary layout and the choice of headline metrics in `summary.md`.
+- Whether RQ2's Fisher test should use episodes (current) or calls. Episodes are the independent unit.

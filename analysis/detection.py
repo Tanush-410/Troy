@@ -98,7 +98,7 @@ def _evaluate(scores: dict[str, EpisodeScore], records: dict[str, EpisodeRecord]
     return ConditionResult(len(pos), len(neg), auroc, tpr, fpr, leads, early)
 
 
-def evaluate(events_path: Path, episodes: Sequence[EpisodeRecord], model: str, control: str,
+def evaluate(events_path: Path | Sequence[Path], episodes: Sequence[EpisodeRecord], model: str, control: str,
              baseline: Baseline = "all_d0", window: int = 5, ablate: bool = True, seed: int = 0
              ) -> DetectionResult | None:
     recs = {r.episode_id: r for r in episodes if r.model == model and r.control_condition == control}

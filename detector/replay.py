@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from detector.pldd import PLDD, EpisodeScore
 from policy.log_schema import DetectorEvent, read_detector_events
 
 
-def episodes_from_log(path: Path) -> dict[str, list[DetectorEvent]]:
-    """Detector-view episodes from a PEP log, in step order."""
+def episodes_from_log(paths: Path | Sequence[Path]) -> dict[str, list[DetectorEvent]]:
+    """Detector-view episodes from one or more PEP logs, in step order."""
     out: dict[str, list[DetectorEvent]] = defaultdict(list)
-    for e in read_detector_events(path):
-        out[e.episode_id].append(e)
+    for path in [paths] if isinstance(paths, Path) else paths:
+        for e in read_detector_events(path):
+            out[e.episode_id].append(e)
     return {k: sorted(v, key=lambda e: e.step) for k, v in out.items()}
 
 
