@@ -57,16 +57,21 @@ def run_episode(
 
     The context persists across tasks only under D1; otherwise the agent and the
     PEP's taint tracking are reset before every task. The simulated clock
-    advances by one tick before every task after the first.
+    advances by one tick before every task after the first. If a task ends in
+    context overflow, the episode stops and the remaining tasks are recorded
+    as "not_run" (they are not judged).
     """
     if state is None:
         state = generate_state(cfg.seed, cfg.generator)
-    ctx = EpisodeContext(**cfg.model_dump(exclude={"generator"}))
+    ctx = EpisodeContext(**cfg.model_dump(exclude={"generator", "provider", "max_turns_per_task"}))
     pep_kwargs: dict[str, Any] = {} if clock is None else {"clock": clock}
     pep = PEP(ctx, state, HarmOracle(), JsonlWriter(paths.events), expansion_policy, **pep_kwargs)
     transcript = JsonlWriter(paths.transcripts / f"{cfg.episode_id}.jsonl")
 
     outcomes = []
+    usage = {"model_turns": 0, "input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
+             "cache_write_tokens": 0}
+    task_ends: dict[str, str] = {}
     for i, task in enumerate(tasks):
         if i > 0:
             state.advance_clock()
@@ -74,11 +79,20 @@ def run_episode(
             agent.reset()
             pep.reset_context()
         pep.begin_task(task)
-        for entry in agent.run_task(task.agent_view(), pep.gateway()):
+        task_run = agent.run_task(task.agent_view(), pep.gateway())
+        for entry in task_run.transcript:
             transcript.write_raw(entry)
+        for key in usage:
+            usage[key] += getattr(task_run, key)
+        task_ends[task.task_id] = task_run.end
         outcomes.append(judge_task(task, pep.task_records(task.task_id), state))
         pep.end_task()
+        if task_run.end == "context_overflow":
+            task_ends.update({t.task_id: "not_run" for t in tasks[i + 1:]})
+            break
 
-    record = pep.episode_record(outcomes, cfg.config_hash(), provenance)
+    record = pep.episode_record(outcomes, cfg.config_hash(), provenance).model_copy(
+        update={**usage, "task_ends": task_ends,
+                "provider_config": cfg.provider.model_dump(mode="json") if cfg.provider else None})
     JsonlWriter(paths.episodes).write(record)
     return record, state

@@ -69,6 +69,24 @@ Frozen files: `policy/permissions.py`, `oracle/harm_rules.py`, `oracle/claims.py
   - Metrics report the format-error rate per model; drift and harm denominators count well-formed calls only.
 - **Ticket consistency.** A test over 20 seeds checks that every ticket's visible text states the same order, amount and address as its hidden `requested_amount` and `requested_address`.
 
+## Milestone 5: LLM agent loop and providers
+
+- **Providers** (each keeps its own conversation format; the agent loop sees only the neutral types in `agents/providers/base.py`; keys come only from environment variables):
+  - Claude: the official `anthropic` SDK (1.8.0).
+  - Ollama: the **native** `/api/chat` endpoint.
+  - Other OpenAI-compatible servers such as vLLM: the `openai` SDK (3.19.2).
+- **Why Ollama uses its native API.** Measured on Ollama 0.33.1: the server's default context is about 2k tokens, and its OpenAI-compatible endpoint ignores `num_ctx` whether it's sent as `options.num_ctx` or top-level. An 8k-token prompt was silently cut to 2,050 tokens, which is less than our system prompt plus tool schemas (about 2.2k). The native endpoint honours `num_ctx`, `seed` and `temperature` per request and reports the full prompt size, cached prefix included. An overflowing prompt is silently cut to about half the window (18,923 tokens became 8,194 with `num_ctx=16384`).
+- **No silent truncation, for any provider.** Before each request, the loop checks the previous turn's server-reported prompt size, plus the appended content estimated conservatively at 3 characters per token, plus `max_tokens`, against the configured `context_window`. If it doesn't fit, the task ends as `context_overflow` and nothing is sent. A prompt that shrinks between turns is also treated as overflow. On overflow the runner stops the episode and records the remaining tasks as `not_run`; they are not judged.
+- **Context settings:** `num_ctx` is set explicitly on every Ollama request. qwen3:8b uses 32,768, its native window with no RoPE scaling. `experiments/context_probe.py` must pass for a model before any of its results count.
+- **Sampling:** temperature is fixed at **0.7 for every model**. Temperature 0 would make the 30 episodes per cell nearly identical and the confidence intervals meaningless. It goes through `extra_body` for Claude, because SDK 1.x removed sampling parameters from `messages.create` (Haiku 4.5 still honours it). Ollama also gets the episode seed; the Anthropic API has no seed. The full provider config (model, temperature, seed, context window, max_tokens, thinking) is recorded on every episode record and included in the config hash.
+- **qwen3 thinking is off (`think: false`)** for parity with Haiku, which runs without extended thinking.
+- **Role prompts list the role's allowed tools,** from the frozen permission table, while every agent is still offered every tool schema. Reason: unlisted permissions would make Type I attempts a prompting artifact instead of drift.
+- **Manual tool-use loop, not the SDK tool runner,** because every call must pass through the PEP gateway. Raw argument text from open-weight models goes to the PEP unparsed. For Ollama, `<tool_call>` blocks the server failed to parse are recovered from the text and submitted raw, so they are logged as format errors instead of vanishing.
+- **Token attribution:** a model turn's tokens go on the event for its first tool call; every turn's usage is also totalled on the episode record, along with how each task ended.
+- **Prompt caching:** automatic top-level `cache_control` on Claude requests.
+- **Task instructions** state what the agent needs: competitor names and IDs (no tool lists competitors), cost floors, and image references.
+- **Turn limit:** 12 model turns per task (configurable as `max_turns_per_task`).
+
 ## Pre-freeze changes
 
 Changes to frozen files after they were first committed, before milestone 9.

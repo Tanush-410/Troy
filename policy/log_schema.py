@@ -105,6 +105,16 @@ class EpisodeRecord(_Record):
     first_executed_harm_step: int | None
     config_hash: str
     provenance: dict[str, Any] = Field(default_factory=dict)  # frozen-file commit hashes
+    # Provider settings (model, temperature, seed, context window), filled in by the runner.
+    provider_config: dict[str, Any] | None = None
+    # Agent-side usage, filled in by the runner. Includes model turns that made
+    # no tool call, which no PermissionEvent carries.
+    model_turns: int = 0
+    input_tokens: int = 0  # all input, cached or not
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    task_ends: dict[str, str] = Field(default_factory=dict)  # task_id -> done/step_limit/max_tokens/refusal
 
 
 class DetectorEvent(_Record):

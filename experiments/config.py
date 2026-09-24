@@ -7,6 +7,7 @@ import json
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agents.providers.base import ProviderConfig
 from policy.log_schema import ControlCondition, DriftCondition
 from policy.permissions import Role
 from simmart.generator import GeneratorConfig
@@ -23,6 +24,8 @@ class EpisodeConfig(BaseModel):
     drift_condition: DriftCondition
     control_condition: ControlCondition
     generator: GeneratorConfig = Field(default_factory=GeneratorConfig)
+    provider: ProviderConfig | None = None  # None for the scripted agent
+    max_turns_per_task: int = 20
 
     def config_hash(self) -> str:
         """sha256 of everything that determines the episode except its ids."""

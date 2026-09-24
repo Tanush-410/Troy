@@ -13,7 +13,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from agents.base import TranscriptEntry
+from agents.base import TaskRun, TranscriptEntry
 from oracle.drift import DriftType
 from policy.pep import AgentGateway
 from policy.task import AgentTask
@@ -37,7 +37,7 @@ class ScriptedAgent:
     def reset(self) -> None:
         self.resets += 1
 
-    def run_task(self, task: AgentTask, gateway: AgentGateway) -> list[TranscriptEntry]:
+    def run_task(self, task: AgentTask, gateway: AgentGateway) -> TaskRun:
         replies: list[dict[str, Any]] = []
         transcript: list[TranscriptEntry] = [{"role": "user", "task_id": task.task_id, "content": task.instruction}]
         for step in self.scripts[task.task_id]:
@@ -47,4 +47,4 @@ class ScriptedAgent:
             transcript.append({"role": "assistant", "task_id": task.task_id,
                                "tool_call": {"name": step.action, "params": params}})
             transcript.append({"role": "tool", "task_id": task.task_id, "content": reply})
-        return transcript
+        return TaskRun(transcript=transcript)

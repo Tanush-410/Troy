@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Experiment harness: RBAC as containment and detection for LLM agent drift"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+    "anthropic>=1.8.0",
+    "openai>=3.19.2",
     "pydantic==2.13.5",
 ]
 
@@ -20,4 +22,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["simmart", "tools", "policy", "oracle", "agents", "experiments", "analysis"]
+packages = ["simmart", "tools", "policy", "oracle", "agents", "scenarios", "experiments", "analysis"]
