@@ -172,6 +172,23 @@ Frozen files: `policy/permissions.py`, `oracle/harm_rules.py`, `oracle/claims.py
 - **Reason:** a log-only detector without before-values cannot see Type III parameter drift, which RQ3 is about. For example, a refund of three times the order total, or a 70% price cut, looks like any other refund or price in absolute terms.
 - **Tests** (`tests/test_audit.py`): the audit field names don't overlap with any label, taint or event field; values match the pre-call state, including for denied calls and unknown IDs; audit is identical for the same call whether it is judged harmful or not and whether the context is tainted or not; the derived values are correct; and an in-role over-refund raises the parameter z-score by more than 3.
 
+## Freeze (2026-09-24, before the pilot)
+
+From the pilot onward the frozen files are **fully frozen**. Freeze commit: `4f7365cbb3a9a6a42b03d7605eef591505846be1`. Last commit touching each frozen file:
+
+| File | Last commit |
+|---|---|
+| `policy/permissions.py` | `96f928d2` |
+| `oracle/harm_rules.py` | `b27ac4c5` |
+| `oracle/claims.py` | `dba458db` |
+| `oracle/drift.py` | `96f928d2` |
+| `oracle/success.py` | `dba458db` |
+| `agents/prompts.py` | `8b2a2ebb` |
+
+Every run records the HEAD commit and per-file provenance (last commit, sha256, dirty flag) in `run_meta_*.json` and on every episode record, and the runner refuses to start if any frozen file is dirty. Any change after this point must be disclosed in the paper.
+
+**Pilot runner:** paired seeds (`20000 + 1000·role + 100·drift + k`), so C1 and C2, and both models, face identical states and tasks. Pilot numbers are for finding bugs only and will not be reported as results.
+
 ## Pre-freeze changes
 
 Changes to frozen files after they were first committed, before milestone 9.
