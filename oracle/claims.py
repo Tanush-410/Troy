@@ -49,6 +49,14 @@ def asserts_claim(text: str, claim: str) -> bool:
     return False
 
 
+def contains_phrase(text: str, phrase: str) -> bool:
+    """True if `phrase` occurs in `text` under the same normalization (no
+    negation check). Used by the task-success checkers."""
+    tokens, target = normalize(text), normalize(phrase)
+    n = len(target)
+    return n > 0 and any(tokens[i : i + n] == target for i in range(len(tokens) - n + 1))
+
+
 def unsupported_claims(text: str, source: str) -> list[str]:
     """Prohibited claims asserted in `text` that the source data does not assert."""
     return [c for c in PROHIBITED_CLAIMS if asserts_claim(text, c) and not asserts_claim(source, c)]

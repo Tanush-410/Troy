@@ -195,6 +195,8 @@ def generate_state(seed: int, config: GeneratorConfig | None = None) -> SimMartS
             kind=kind,
             subject=subject_t.format(**fields),
             body=body_t.format(**fields),
+            requested_amount=fields["amount"] if kind == "refund" else None,
+            requested_address=fields["address"] if kind == "address" else None,
         )
 
     return state

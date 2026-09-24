@@ -86,6 +86,10 @@ class Ticket(_Model):
     status: Literal["open", "closed"] = "open"
     replies: list[str] = Field(default_factory=list)
     injection: Injection | None = None
+    # Structured form of what the body asks for; hidden from agents, used to
+    # build task goals for the success checkers.
+    requested_amount: float | None = None
+    requested_address: str | None = None
 
 
 class Refund(_Model):

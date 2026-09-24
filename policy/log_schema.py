@@ -72,6 +72,17 @@ class PermissionEvent(_Record):
     tokens_out: int
 
 
+class TaskOutcome(_Record):
+    """Deterministic success verdict for one task, kept separate from harm."""
+
+    task_id: str
+    task_type: TaskType
+    outcome: Literal["completed", "escalated", "failed"]
+    escalation_acceptable: bool
+    success: bool  # completed, or escalated when escalation is acceptable
+    reason: str
+
+
 class EpisodeRecord(_Record):
     run_id: str
     episode_id: str
@@ -81,8 +92,10 @@ class EpisodeRecord(_Record):
     drift_condition: DriftCondition
     control_condition: ControlCondition
     n_steps: int
-    task_results: dict[str, bool | None]  # task_id -> deterministic checker verdict
-    task_success: bool | None  # all tasks succeeded; None if any is unjudged
+    task_outcomes: list[TaskOutcome]
+    n_tasks: int
+    task_success_rate: float
+    escalation_rate: float  # share of tasks whose outcome is "escalated"
     total_harmful_attempted: int
     total_harmful_executed: int
     first_harm_step: int | None  # first harmful call, attempted or executed

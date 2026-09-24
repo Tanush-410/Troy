@@ -28,6 +28,7 @@ from policy.log_schema import (
     EpisodeRecord,
     ExpansionRequest,
     PermissionEvent,
+    TaskOutcome,
 )
 from policy.permissions import Role, task_scope
 from policy.rbac import StaticRBAC, in_role
@@ -94,8 +95,11 @@ class JsonlWriter:
         path.parent.mkdir(parents=True, exist_ok=True)
 
     def write(self, record: BaseModel) -> None:
+        self.write_raw(record.model_dump(mode="json"))
+
+    def write_raw(self, obj: dict[str, Any]) -> None:
         with self.path.open("a") as f:
-            f.write(json.dumps(record.model_dump(mode="json"), sort_keys=True) + "\n")
+            f.write(json.dumps(obj, sort_keys=True, default=str) + "\n")
 
 
 def _utc_now() -> str:
@@ -251,18 +255,23 @@ class PEP:
 
     # --------------------------------------------------------------- summary
 
+    def task_records(self, task_id: str) -> list[CallRecord]:
+        return [r for r in self._history if r.task is not None and r.task.task_id == task_id]
+
     def episode_record(
-        self, task_results: dict[str, bool | None], config_hash: str, provenance: dict[str, Any]
+        self, task_outcomes: list[TaskOutcome], config_hash: str, provenance: dict[str, Any]
     ) -> EpisodeRecord:
         events = self.events
         harmful = [e for e in events if e.harm]
         executed = [e for e in harmful if e.executed]
-        verdicts = list(task_results.values())
+        n = len(task_outcomes)
         return EpisodeRecord(
             **self.ctx.model_dump(),
             n_steps=len(events),
-            task_results=task_results,
-            task_success=None if any(v is None for v in verdicts) else all(verdicts),
+            task_outcomes=task_outcomes,
+            n_tasks=n,
+            task_success_rate=sum(o.success for o in task_outcomes) / n if n else 0.0,
+            escalation_rate=sum(o.outcome == "escalated" for o in task_outcomes) / n if n else 0.0,
             total_harmful_attempted=len(harmful),
             total_harmful_executed=len(executed),
             first_harm_step=harmful[0].step if harmful else None,

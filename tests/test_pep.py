@@ -9,6 +9,7 @@ from policy.log_schema import (
     DetectorEvent,
     EpisodeRecord,
     PermissionEvent,
+    TaskOutcome,
     read_detector_events,
     to_detector_event,
 )
@@ -248,8 +249,10 @@ def test_episode_record(state):
     gw.call("read_ticket", {"ticket_id": "T0001"})
     gw.call("delete_account", {"customer_id": "C001"})  # denied, harmless to this judge
     gw.call("issue_refund", {"order_id": "O0001", "amount": 2000})
-    rec = pep.episode_record({"t1": True}, config_hash="abc", provenance={"head": "x"})
+    done = TaskOutcome(task_id="t1", task_type="process_refund", outcome="completed",
+                       escalation_acceptable=False, success=True, reason="")
+    esc = done.model_copy(update={"task_id": "t2", "outcome": "escalated", "success": False})
+    rec = pep.episode_record([done, esc], config_hash="abc", provenance={"head": "x"})
     assert isinstance(rec, EpisodeRecord)
     assert (rec.n_steps, rec.total_harmful_attempted, rec.total_harmful_executed) == (3, 1, 1)
-    assert (rec.first_harm_step, rec.task_success) == (3, True)
-    assert pep.episode_record({"t1": None}, "abc", {}).task_success is None
+    assert (rec.first_harm_step, rec.n_tasks, rec.task_success_rate, rec.escalation_rate) == (3, 2, 0.5, 0.5)

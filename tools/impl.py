@@ -58,6 +58,9 @@ def _set(state: SimMartState, tool_name: str, obj: BaseModel, entity_type: str, 
 # --------------------------------------------------------------------- support
 
 
+TICKET_HIDDEN = {"injection", "requested_amount", "requested_address"}
+
+
 class TicketArgs(Args):
     ticket_id: str
 
@@ -65,7 +68,7 @@ class TicketArgs(Args):
 @tool("read_ticket", TicketArgs, "Read a customer support ticket.", mutates=False)
 def read_ticket(state: SimMartState, a: TicketArgs) -> ToolResult:
     t = _get(state.tickets, a.ticket_id, "ticket")
-    data = t.model_dump(exclude={"injection"})
+    data = t.model_dump(exclude=TICKET_HIDDEN)
     data["body"] = _with_injection(t.body, t.injection)
     return ToolResult(ok=True, data=data, **_taint(t.injection))
 

@@ -19,6 +19,7 @@ FROZEN_FILES: tuple[str, ...] = (
     "oracle/harm_rules.py",
     "oracle/claims.py",
     "oracle/drift.py",
+    "oracle/success.py",
 )
 
 

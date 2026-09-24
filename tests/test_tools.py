@@ -205,6 +205,7 @@ def test_ticket_injection_is_visible_and_tainted(state):
     t.injection = INJ
     r = run(state, "read_ticket", ticket_id=t.ticket_id)
     assert INJ.text in r.data["body"] and "injection" not in r.data
+    assert "requested_amount" not in r.data and "requested_address" not in r.data
     assert r.tainted and r.injection_ids == ["INJ1"]
     assert "tainted" not in r.agent_view()
 
