@@ -73,3 +73,8 @@ Short summaries appended after each milestone.
 **Please check:**
 - The summary layout and the choice of headline metrics in `summary.md`.
 - Whether RQ2's Fisher test should use episodes (current) or calls. Episodes are the independent unit.
+
+## Before STOP 1 (2026-09-24)
+
+- Final smoke reruns with all fixes: gpt-oss-120b completed 6/6 tasks (23 rate-limit retries, 249 s of waiting); qwen3:8b completed 5/6 (su-1: answered in its final message instead of `reply_customer`, a model error now that the prompt is explicit).
+- Estimator fixed to use recorded per-turn latency (it had produced a negative latency); every model turn now records `latency_s`.

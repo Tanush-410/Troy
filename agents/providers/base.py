@@ -75,6 +75,7 @@ class ModelTurn:
     usage: Usage
     raw_stop_reason: str | None = None
     retries: list[dict[str, Any]] = field(default_factory=list)  # one entry per retried attempt
+    latency_s: float | None = None  # model call time, excluding retry sleeps
 
 
 @dataclass(frozen=True)

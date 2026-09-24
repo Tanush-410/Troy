@@ -64,6 +64,7 @@ class LLMAgent:
                 "role": "assistant", "task_id": task.task_id, "text": turn.text,
                 "tool_calls": [asdict(c) for c in turn.tool_calls],
                 "stop_reason": turn.raw_stop_reason, "usage": asdict(turn.usage), "retries": turn.retries,
+                "latency_s": turn.latency_s,
             })
             if not turn.tool_calls:
                 run.end = END_REASONS.get(turn.stop_reason, "done")

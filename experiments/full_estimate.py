@@ -62,21 +62,47 @@ def measure(run_dir: Path) -> Measured:
         prompts.extend(totals)
 
     episodes = [json.loads(line) for line in (run_dir / "episodes.jsonl").read_text().splitlines()]
-    by_episode: dict[str, list[datetime]] = defaultdict(list)
-    for line in (run_dir / "events.jsonl").read_text().splitlines():
-        e = json.loads(line)
-        by_episode[e["episode_id"]].append(datetime.fromisoformat(e["timestamp"]))
-    busy = sum((max(ts) - min(ts)).total_seconds() for ts in by_episode.values())
-    n_turns = sum(ep["model_turns"] for ep in episodes)
+    latencies = _turn_latencies(run_dir, transcripts)
     return Measured(
         model=episodes[0]["model"], tasks=len(per_task),
         turns_per_task=statistics.mean(turns), input_per_task=statistics.mean(inp),
         output_per_task=statistics.mean(out), cached_share=sum(cached) / sum(inp) if sum(inp) else 0.0,
         growth_per_task=statistics.mean(growth), first_prompt=statistics.mean(first), max_prompt=max(prompts),
-        sec_per_turn=busy / n_turns if n_turns else 0.0,
+        sec_per_turn=statistics.mean(latencies) if latencies else 0.0,  # totals need the mean
         retries=sum(ep["api_retries"] for ep in episodes),
         retry_wait_s=sum(ep["api_retry_wait_s"] for ep in episodes),
     )
+
+
+def _turn_latencies(run_dir: Path, transcripts: Path) -> list[float]:
+    """Model latency per turn, excluding rate-limit waits.
+
+    Uses the recorded `latency_s` when present. Otherwise (older logs) it is the
+    gap between the last event of one tool-calling turn and the first event of
+    the next tool-calling turn in the same task, minus the later turn's retry waits.
+    """
+    events: dict[str, list[datetime]] = defaultdict(list)
+    for line in (run_dir / "events.jsonl").read_text().splitlines():
+        e = json.loads(line)
+        events[e["episode_id"]].append(datetime.fromisoformat(e["timestamp"]))
+    out: list[float] = []
+    for f in sorted(transcripts.glob("*.jsonl")):
+        turns = [json.loads(line) for line in f.read_text().splitlines()]
+        turns = [t for t in turns if t.get("role") == "assistant"]
+        recorded = [t["latency_s"] for t in turns if t.get("latency_s") is not None]
+        if recorded:
+            out.extend(recorded)
+            continue
+        ts = iter(events.get(f.stem, []))
+        prev_last, prev_task = None, None
+        for t in turns:
+            n = len(t["tool_calls"])
+            stamps = [next(ts) for _ in range(n)]
+            wait = sum(r["wait_s"] for r in t.get("retries", []))
+            if n and prev_last is not None and t["task_id"] == prev_task:
+                out.append((stamps[0] - prev_last).total_seconds() - wait)
+            prev_last, prev_task = (stamps[-1], t["task_id"]) if n else (None, None)
+    return [x for x in out if x >= 0]
 
 
 @dataclass
@@ -133,8 +159,9 @@ def report(groq_dir: Path, qwen_dir: Path) -> None:
               f"max prompt {m.max_prompt:,}, {m.sec_per_turn:.1f} s/turn, retries {m.retries}")
     print(f"\nassumed design: {ROLES} roles x (3 drifts x {TASKS_NON_D1} tasks + D1 x {TASKS_D1} tasks) "
           f"x {LIVE_CONTROLS} live controls, per model")
-    for n in (30, 20):
-        print(f"\n=== {n} episodes per cell ({ROLES * 4 * LIVE_CONTROLS * n} episodes per model) ===")
+    for n in (3, 30, 20):
+        label = "PILOT" if n == 3 else "FULL"
+        print(f"\n=== {label}: {n} episodes per cell ({ROLES * 4 * LIVE_CONTROLS * n} episodes per model) ===")
         gp, qp = plan(g, n), plan(q, n)
         cost = dollars(g.model, gp)
         print(f"{g.model}: {gp.input_tokens / 1e6:,.1f}M in ({gp.cached_tokens / 1e6:,.1f}M cached) + "
@@ -142,8 +169,9 @@ def report(groq_dir: Path, qwen_dir: Path) -> None:
               f"D1 peak prompt ~{gp.d1_peak_prompt:,.0f} tokens")
         print(f"  cost (paid Developer tier): ${cost:,.2f}" if cost is not None else "  cost: unpriced")
         free = days_rate_limited(gp, tpm=8_000, rpd=1_000, tpd=200_000)
-        print(f"  free tier (8K TPM, 1K RPD, 200K TPD): {free:,.0f} days"
-              + ("; D1 infeasible: peak prompt exceeds 8K TPM" if gp.d1_peak_prompt > 8_000 else ""))
+        too_big = [x for x, v in (("D1", gp.d1_peak_prompt), ("non-D1", g.max_prompt)) if v > 8_000]
+        print(f"  free tier (8K TPM, 1K RPD, 200K TPD): {free:,.1f} days of rate-limited time"
+              + (f"; INFEASIBLE for {', '.join(too_big)}: a single request exceeds 8K TPM" if too_big else ""))
         for tpm, parallel in ((250_000, 8), (1_000_000, 16)):
             limit_days = days_rate_limited(gp, tpm=tpm, rpd=None, tpd=None)
             latency_days = gp.requests * g.sec_per_turn / parallel / 86_400

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import urllib.request
 from typing import Any
 
@@ -64,6 +65,7 @@ class OllamaSession:
             options["temperature"] = self._config.temperature
         if self._config.seed is not None:
             options["seed"] = self._config.seed
+        t0 = time.perf_counter()
         r = self._post(f"{self._config.base_url or DEFAULT_URL}/api/chat", {
             "model": self._config.model, "messages": self.messages, "tools": self._tools,
             "stream": False, "options": options,
@@ -91,6 +93,7 @@ class OllamaSession:
             text=text, tool_calls=calls, raw_stop_reason=done,
             stop_reason="tool_use" if calls else ("max_tokens" if done == "length" else "end_turn"),
             usage=Usage(input_tokens=prompt, output_tokens=output),
+            latency_s=time.perf_counter() - t0,
         )
 
     def add_tool_results(self, results: list[ToolOutcome]) -> None:

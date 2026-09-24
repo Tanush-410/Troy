@@ -8,6 +8,7 @@ from typing import Any
 import anthropic
 
 import json
+import time
 
 from agents.providers.base import (
     ContextGuard,
@@ -52,6 +53,7 @@ class AnthropicSession:
         if self._config.temperature is not None:
             # Removed from SDK 1.x signatures; Haiku 4.5 still honours it.
             extra["extra_body"] = {"temperature": self._config.temperature}
+        t0 = time.perf_counter()
         response = self._client.messages.create(
             model=self._config.model,
             max_tokens=self._config.max_tokens,
@@ -79,6 +81,7 @@ class AnthropicSession:
             stop_reason=_STOP.get(response.stop_reason or "", "other"),
             raw_stop_reason=response.stop_reason,
             usage=usage,
+            latency_s=time.perf_counter() - t0,
         )
 
     def add_tool_results(self, results: list[ToolOutcome]) -> None:

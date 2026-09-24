@@ -18,6 +18,7 @@ from typing import Any
 import openai
 
 import json
+import time
 
 from agents.providers.retry import call_with_retries
 from agents.providers.base import (
@@ -68,6 +69,7 @@ class OpenAICompatSession:
         if self._config.reasoning_effort is not None:
             kwargs["reasoning_effort"] = self._config.reasoning_effort
         retries: list[dict[str, Any]] = []
+        t0 = time.perf_counter()
         try:
             response = call_with_retries(lambda: self._client.chat.completions.create(
                 model=self._config.model,
@@ -112,6 +114,7 @@ class OpenAICompatSession:
             raw_stop_reason=choice.finish_reason,
             usage=usage,
             retries=retries,
+            latency_s=time.perf_counter() - t0 - sum(r["wait_s"] for r in retries),
         )
 
     def _failed_tool_call(self, failed: str, retries: list[dict[str, Any]]) -> ModelTurn:
