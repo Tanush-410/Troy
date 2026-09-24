@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from oracle.drift import classify_drift
 from policy.log_schema import (
@@ -35,9 +35,32 @@ from policy.rbac import StaticRBAC, in_role
 from policy.task import TaskSpec
 from policy.ts_rbac import ExpansionPolicy, TaskScopedRBAC
 from simmart.state import SimMartState
-from tools import ToolResult, execute
+from tools import TOOLS, ToolResult, execute
 
 DENIED_MESSAGE = "permission denied: {action} is not permitted"
+
+
+def check_format(action: str, params: dict[str, Any] | str) -> tuple[dict[str, Any], str | None]:
+    """Parse raw arguments and validate them against the tool's schema.
+
+    Returns (params as a dict, error or None). Unknown tool names are not
+    format errors: calling a tool that doesn't exist is out of role (Type I).
+    """
+    if isinstance(params, str):
+        try:
+            params = json.loads(params)
+        except json.JSONDecodeError as e:
+            return {"_raw": params}, f"arguments are not valid JSON: {e.msg}"
+    if not isinstance(params, dict):
+        return {"_raw": json.dumps(params, default=str)}, "arguments must be a JSON object"
+    spec = TOOLS.get(action)
+    if spec is not None:
+        try:
+            spec.args_model.model_validate(params)
+        except ValidationError as e:
+            errors = [f"{'.'.join(map(str, x['loc'])) or '<root>'}: {x['msg']}" for x in e.errors()]
+            return params, "invalid arguments: " + "; ".join(errors)
+    return params, None
 
 
 class EpisodeContext(BaseModel):
@@ -177,25 +200,37 @@ class PEP:
         )
         return ("allow", None, request) if granted else ("deny", "ts_rbac", request)
 
-    def _handle(self, action: str, params: dict[str, Any], tokens_in: int, tokens_out: int) -> dict[str, Any]:
+    def _handle(
+        self, action: str, raw_params: dict[str, Any] | str, tokens_in: int, tokens_out: int
+    ) -> dict[str, Any]:
         t0 = time.perf_counter()
         self._step += 1
         task = self._task
         timestamp = self._clock()
-
-        t_dec = time.perf_counter()
-        decision, deny_layer, expansion = self._decide(action)
-        decision_ms = (time.perf_counter() - t_dec) * 1000
-
         role_ok = in_role(self.ctx.agent_role, action)
         task_ok = task is not None and action in task_scope(task.task_type)
-        proposed = ProposedCall(
-            step=self._step, role=self.ctx.agent_role, task=task, action=action,
-            params=params, in_role=role_ok, in_task=task_ok,
-        )
-        # Judge against the pre-call state so denied calls are judged on what
-        # they would have done (attempted harm).
-        rules = sorted(set(self._judge.judge(proposed, self._state, self._history, dict(self._context_injections))))
+
+        # Format errors are checked first: they get no permission decision,
+        # no drift type and no harm judgment, and nothing executes.
+        params, format_error = check_format(action, raw_params)
+        decision_ms = 0.0
+        expansion: ExpansionRequest | None = None
+        deny_layer: str | None = None
+        rules: list[str] = []
+        if format_error is not None:
+            decision = "invalid"
+        else:
+            t_dec = time.perf_counter()
+            decision, deny_layer, expansion = self._decide(action)
+            decision_ms = (time.perf_counter() - t_dec) * 1000
+            proposed = ProposedCall(
+                step=self._step, role=self.ctx.agent_role, task=task, action=action,
+                params=params, in_role=role_ok, in_task=task_ok,
+            )
+            # Judge against the pre-call state so denied calls are judged on
+            # what they would have done (attempted harm).
+            rules = sorted(set(self._judge.judge(proposed, self._state, self._history,
+                                                 dict(self._context_injections))))
 
         taint = dict(self._context_injections)
         report_ids = sorted({src.split(":", 1)[1] for src in taint.values() if src.startswith("report:")})
@@ -218,10 +253,12 @@ class PEP:
             params=params,
             decision=decision,
             deny_layer=deny_layer,
+            format_error=format_error is not None,
+            format_error_detail=format_error,
             expansion_request=expansion,
             in_role=role_ok,
             in_task=task_ok,
-            drift_type=classify_drift(action, role_ok, task_ok, bool(rules)),
+            drift_type=None if format_error else classify_drift(action, role_ok, task_ok, bool(rules)),
             harm=bool(rules),
             harm_rule_ids=rules,
             executed=result is not None and result.ok,
@@ -239,6 +276,8 @@ class PEP:
         if self._log is not None:
             self._log.write(event)
 
+        if format_error is not None:
+            return {"ok": False, "data": {}, "error": format_error}
         if result is None:
             return {"ok": False, "data": {}, "error": DENIED_MESSAGE.format(action=action)}
         return result.agent_view()
@@ -286,8 +325,11 @@ class AgentGateway:
 
     __slots__ = ("_submit",)
 
-    def __init__(self, submit: Callable[[str, dict[str, Any], int, int], dict[str, Any]]) -> None:
+    def __init__(self, submit: Callable[[str, dict[str, Any] | str, int, int], dict[str, Any]]) -> None:
         self._submit = submit
 
-    def call(self, action: str, params: dict[str, Any], tokens_in: int = 0, tokens_out: int = 0) -> dict[str, Any]:
+    def call(
+        self, action: str, params: dict[str, Any] | str, tokens_in: int = 0, tokens_out: int = 0
+    ) -> dict[str, Any]:
+        """Submit a tool call. `params` may be the model's raw argument text."""
         return self._submit(action, params, tokens_in, tokens_out)

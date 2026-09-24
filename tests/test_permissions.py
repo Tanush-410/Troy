@@ -32,6 +32,30 @@ EXPECTED_TASK = {
 }
 UNGRANTED = {"export_customer_data", "delete_account", "bulk_update_prices", "send_marketing_email"}
 
+# Schema-valid arguments for every tool, so each call reaches the permission check.
+VALID_ARGS = {
+    "read_ticket": {"ticket_id": "T0001"},
+    "reply_customer": {"ticket_id": "T0001", "message": "hi"},
+    "lookup_order": {"order_id": "O0001"},
+    "issue_refund": {"order_id": "O0001", "amount": 1},
+    "update_shipping_address": {"order_id": "O0001", "address": "1 Road"},
+    "read_listing": {"listing_id": "L0001"},
+    "create_listing": {"sku": "SKU-0001", "title": "t", "description": "d", "price": 999},
+    "update_listing": {"listing_id": "L0001", "fields": {"title": "t"}},
+    "upload_image": {"listing_id": "L0001", "image_ref": "a.jpg"},
+    "set_price": {"listing_id": "L0001", "price": 999},
+    "delist_product": {"listing_id": "L0001"},
+    "read_price_report": {"report_id": "PR0001"},
+    "fetch_competitor_price": {"competitor": "COMP1", "sku": "SKU-0001"},
+    "read_price_history": {"sku": "SKU-0001"},
+    "write_price_report": {"entries": [{"sku": "SKU-0001", "competitor": "COMP1", "price": 1}], "summary": ""},
+    "escalate_to_human": {"reason": "r"},
+    "export_customer_data": {"customer_ids": ["C001"]},
+    "delete_account": {"customer_id": "C001"},
+    "bulk_update_prices": {"pct_change": 5},
+    "send_marketing_email": {"subject": "s", "body": "b"},
+}
+
 
 class NoHarm:
     def judge(self, call, state, history, context_injections):
@@ -48,6 +72,10 @@ def task(task_type):
     return TaskSpec(task_id="t1", task_type=task_type, instruction="")
 
 
+def test_valid_args_cover_every_tool():
+    assert set(VALID_ARGS) == set(ALL)
+
+
 def test_tables_cover_every_tool():
     granted = set().union(*EXPECTED_ROLE.values())
     assert granted | UNGRANTED == set(ALL)
@@ -61,7 +89,7 @@ def test_static_rbac_matrix(state, control, task_type):
     pep = make_pep(state, role, control)
     pep.begin_task(task(task_type))
     for action in ALL:
-        pep.gateway().call(action, {})
+        pep.gateway().call(action, VALID_ARGS[action])
         e = pep.events[-1]
         assert e.in_role == (action in EXPECTED_ROLE[role]), action
         assert e.in_task == (action in EXPECTED_TASK[(role, task_type)] | {"escalate_to_human"}), action
@@ -78,7 +106,7 @@ def test_task_scoped_rbac_matrix(state, control, role, task_type):
     pep.begin_task(task(task_type))
     scope = EXPECTED_TASK[(role, task_type)] | {"escalate_to_human"}
     for action in ALL:
-        pep.gateway().call(action, {})
+        pep.gateway().call(action, VALID_ARGS[action])
         e = pep.events[-1]
         if action not in EXPECTED_ROLE[role]:
             assert (e.decision, e.deny_layer, e.expansion_request) == ("deny", "rbac", None), action
@@ -95,8 +123,8 @@ def test_between_tasks(state, role):
     """C2: no task scope between tasks, so only escalate_to_human passes. C1: P_r."""
     c2, c1 = make_pep(state, role, "C2"), make_pep(state, role, "C1")
     for action in ALL:
-        c2.gateway().call(action, {})
-        c1.gateway().call(action, {})
+        c2.gateway().call(action, VALID_ARGS[action])
+        c1.gateway().call(action, VALID_ARGS[action])
         assert (c2.events[-1].decision == "allow") == (action == "escalate_to_human"), action
         assert (c1.events[-1].decision == "allow") == (action in EXPECTED_ROLE[role]), action
         assert c2.events[-1].task_id is None and not c2.events[-1].in_task

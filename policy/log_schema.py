@@ -4,8 +4,9 @@
 `DetectorEvent` is the only view the PLDD may consume: action, params,
 decision and timing, whether the PEP had to ask for a scope expansion, plus the
 orchestrator-assigned role and task type needed to pick a baseline. It carries
-no labels, taint, tokens, prompts or outputs. The detector must load logs through `read_detector_events`, never by parsing
-PermissionEvent itself.
+no labels, taint, tokens, prompts or outputs. Format-error events are left out
+of the detector view entirely. The detector must load logs through
+`read_detector_events`, never by parsing PermissionEvent itself.
 """
 
 from __future__ import annotations
@@ -53,13 +54,15 @@ class PermissionEvent(_Record):
     latency_ms: float  # whole PEP handling time, including tool execution
     decision_latency_ms: float  # permission check alone (RQ2 added latency)
     action: str
-    params: dict[str, Any]
-    decision: Literal["allow", "deny"]
+    params: dict[str, Any]  # {"_raw": <text>} when the arguments could not be parsed
+    decision: Literal["allow", "deny", "invalid"]  # "invalid" only for format errors
     deny_layer: Literal["rbac", "ts_rbac"] | None
+    format_error: bool  # unparseable arguments or schema validation failure
+    format_error_detail: str | None
     expansion_request: ExpansionRequest | None  # C2/C4 only, logged even when denied
     in_role: bool
     in_task: bool  # against the frozen S_tau, whatever the control condition
-    drift_type: DriftType
+    drift_type: DriftType | None  # None for format errors, which get no drift type
     harm: bool
     harm_rule_ids: list[str]
     executed: bool  # allowed and the tool call succeeded
@@ -128,6 +131,8 @@ def _detector_fields(raw: dict[str, Any]) -> DetectorEvent:
 
 
 def to_detector_event(e: PermissionEvent) -> DetectorEvent:
+    if e.format_error:
+        raise ValueError("format-error events are not part of the detector view")
     return _detector_fields(e.model_dump(mode="json"))
 
 
@@ -136,4 +141,6 @@ def read_detector_events(path: Path) -> Iterator[DetectorEvent]:
     with path.open() as f:
         for line in f:
             if line.strip():
-                yield _detector_fields(json.loads(line))
+                raw = json.loads(line)
+                if not raw["format_error"]:
+                    yield _detector_fields(raw)

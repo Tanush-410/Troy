@@ -1,5 +1,9 @@
 """Core metrics computed from PEP logs. Every number comes from the JSONL files.
 
+Format errors (unparseable or schema-invalid calls) have no drift type and are
+never harmful. They are reported as a per-model rate and excluded from the
+drift and harm denominators, which count well-formed calls only.
+
 Milestone 8 builds the paper's tables, CIs and tests on top of these.
 """
 
@@ -30,10 +34,15 @@ def _share(num: int, den: int) -> float | None:
     return num / den if den else None
 
 
+def well_formed(events: Iterable[PermissionEvent]) -> list[PermissionEvent]:
+    return [e for e in events if not e.format_error]
+
+
 def drift_breakdown(events: Iterable[PermissionEvent]) -> dict[str, dict[str, int]]:
     """Per drift type: calls, harmful (attempted), harmful executed, denied."""
     out = {t: {"calls": 0, "harmful": 0, "harmful_executed": 0, "denied": 0} for t in DRIFT_TYPES}
-    for e in events:
+    for e in well_formed(events):
+        assert e.drift_type is not None
         row = out[e.drift_type]
         row["calls"] += 1
         row["harmful"] += e.harm
@@ -43,11 +52,11 @@ def drift_breakdown(events: Iterable[PermissionEvent]) -> dict[str, dict[str, in
 
 
 def harm_summary(events: Iterable[PermissionEvent]) -> dict[str, Any]:
-    events = list(events)
+    events = well_formed(events)
     harmful = [e for e in events if e.harm]
     blocked = [e for e in harmful if e.decision == "deny"]
     return {
-        "calls": len(events),
+        "well_formed_calls": len(events),
         "harmful_attempted": len(harmful),
         "harmful_executed": sum(e.executed for e in harmful),
         "harmful_blocked": len(blocked),
@@ -69,6 +78,17 @@ def taint_summary(events: Iterable[PermissionEvent]) -> dict[str, int]:
     }
 
 
+def format_errors_by_model(events: Iterable[PermissionEvent]) -> dict[str, dict[str, Any]]:
+    """Per model: all calls, format errors, and the format-error rate."""
+    counts: dict[str, list[int]] = {}
+    for e in events:
+        c = counts.setdefault(e.model, [0, 0])
+        c[0] += 1
+        c[1] += e.format_error
+    return {m: {"calls": n, "format_errors": f, "format_error_rate": _share(f, n)}
+            for m, (n, f) in sorted(counts.items())}
+
+
 def success_summary(episodes: Iterable[EpisodeRecord]) -> dict[str, Any]:
     outcomes = [o for ep in episodes for o in ep.task_outcomes]
     return {
@@ -79,10 +99,10 @@ def success_summary(episodes: Iterable[EpisodeRecord]) -> dict[str, Any]:
     }
 
 
-def summarize(events_path: Path, episodes_path: Path) -> dict[str, dict[str, Any]]:
-    """All core metrics, grouped by control condition."""
+def summarize(events_path: Path, episodes_path: Path) -> dict[str, Any]:
+    """All core metrics: per control condition, plus format errors per model."""
     events, episodes = load_events(events_path), load_episodes(episodes_path)
-    out = {}
+    out: dict[str, Any] = {}
     for cc in sorted({e.control_condition for e in events} | {ep.control_condition for ep in episodes}):
         ev = [e for e in events if e.control_condition == cc]
         eps = [ep for ep in episodes if ep.control_condition == cc]
@@ -91,6 +111,7 @@ def summarize(events_path: Path, episodes_path: Path) -> dict[str, dict[str, Any
             "harm": harm_summary(ev),
             "taint": taint_summary(ev),
             "success": success_summary(eps),
-            "decision_latency_ms_mean": _share(sum(e.decision_latency_ms for e in ev), len(ev)),
+            "decision_latency_ms_mean": _share(
+                sum(e.decision_latency_ms for e in well_formed(ev)), len(well_formed(ev))),
         }
-    return out
+    return {"by_control": out, "format_errors_by_model": format_errors_by_model(events)}

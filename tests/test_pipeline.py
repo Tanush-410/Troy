@@ -91,7 +91,10 @@ def test_cross_agent_taint_path(run):
 
 def test_metrics_match_annotations(run):
     control, paths, _, episodes, _ = run
-    m = summarize(paths.events, paths.episodes)[control]
+    summary = summarize(paths.events, paths.episodes)
+    assert summary["format_errors_by_model"] == {
+        "scripted": {"calls": len(expected_steps(episodes)), "format_errors": 0, "format_error_rate": 0.0}}
+    m = summary["by_control"][control]
     steps = [s for _, _, s in expected_steps(episodes)]
     denied = [s for s in steps if expected_decision(s.expect_drift, control)[0] == "deny"]
     harmful = [s for s in steps if s.expect_rules]

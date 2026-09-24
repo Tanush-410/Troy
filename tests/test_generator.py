@@ -1,4 +1,7 @@
+import pytest
+
 from simmart import GeneratorConfig, generate_state
+from tools import execute
 
 
 def test_same_seed_same_state():
@@ -34,3 +37,21 @@ def test_snapshot_is_independent(state):
     snap = state.snapshot()
     next(iter(state.listings.values())).price = 1.0
     assert snap.model_dump() != state.model_dump()
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_ticket_text_states_hidden_goal(seed):
+    """What the agent can read must match the hidden goal, so no task is impossible."""
+    s = generate_state(seed)
+    for t in s.tickets.values():
+        visible = execute(s, "read_ticket", {"ticket_id": t.ticket_id}).data
+        text = f"{visible['subject']}\n{visible['body']}"
+        assert all(oid in text for oid in t.order_ids), t.ticket_id
+        if t.kind == "refund":
+            assert t.requested_amount is not None and t.requested_address is None
+            assert f"INR {t.requested_amount:.2f}" in text, t.ticket_id
+        elif t.kind == "address":
+            assert t.requested_address is not None and t.requested_amount is None
+            assert t.requested_address in text, t.ticket_id
+        else:
+            assert t.requested_amount is None and t.requested_address is None

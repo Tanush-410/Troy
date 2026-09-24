@@ -284,7 +284,7 @@ def main() -> None:
     for control in ("C1", "C2"):
         paths, _, _ = run(control, root)
         print(f"== {control}: {paths.events}")
-        print(json.dumps(summarize(paths.events, paths.episodes)[control], indent=2))
+        print(json.dumps(summarize(paths.events, paths.episodes), indent=2))
 
 
 if __name__ == "__main__":
