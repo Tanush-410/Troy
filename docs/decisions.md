@@ -258,6 +258,30 @@ Every run records the HEAD commit and this per-file provenance, and the runner r
 - **IsolationForest** can never split on a feature that is constant in its training (baseline) windows, so it ignores that feature entirely, even if the feature varies when scored. `PLDD.iforest_features_used()` reports the features it actually splits on.
 - **For the paper:** under C1 no scope expansion is ever requested, so the C3 detector's weighted sum effectively uses five features and C4's uses six. IsolationForest can use fewer, because features that never vary in D0 (possibly the deny rate or novel-action rate) are invisible to it. The effective count per model, detector and combiner is measured from the logs and reported in `results/summary.md` (Detector feature health) and `detector_feature_health.csv`, not assumed.
 
+## Detector configuration: spread floor, full-run freeze plan, no tuning on pilot data (2026-09-27)
+
+- **The 0.5 spread floor (`Z_STD_FLOOR` in `detector/features.py`).** Each feature's baseline standard deviation is floored at 0.5 before standardizing. Reasons:
+  1. A feature that never varies in the clean baseline (standard deviation 0) would otherwise divide by zero.
+  2. A feature that barely varies would otherwise turn tiny deviations into huge z-scores and dominate the weighted sum.
+
+  **The value was chosen before any real data and has not been tuned.** It is one value for features on different scales: the rates (deny, novel-action, expansion) lie between 0 and 1, so a floor of 0.5 means a rate jump from 0 to 1 scores z = 2; the frequency and parameter z-scores and sequence surprise have wider ranges. The same 0.5 is the fallback spread for unseen action counts and parameters.
+- **Planned for the full-run freeze (not done yet; the pilot runs unchanged).** All detector settings move into one config file, which joins `FROZEN_FILES` and `.github/CODEOWNERS`. The six settings you named, with their current values:
+
+  | Setting | Value |
+  |---|---|
+  | Window size | 5 |
+  | Feature weights | 1.0 each |
+  | Spread floor | 0.5 |
+  | IsolationForest trees | 200 |
+  | Calibration FPR | 0.05, episode level |
+  | Feature list | deny_rate, novel_action_rate, action_freq_z, param_z, seq_surprise, expansion_rate |
+
+  Proposed for the same file, since they also shape detector results (to confirm at that freeze):
+  - bigram smoothing (0.1)
+  - IsolationForest seed (0)
+  - D0 split shares (25% held out, then 60/40 fit/calibration)
+- **No tuning on pilot data.** Pilot logs may be used to find detector *bugs* (for example crashes, NaNs, or features that are constant by construction), but not to choose or adjust any setting above. If a setting looks like it should change after the pilot, it will be proposed with the reason and wait for approval, and the author decides whether it must be disclosed as tuned.
+
 ## Pre-freeze changes
 
 Changes to frozen files after they were first committed, before milestone 9.
