@@ -88,3 +88,16 @@ Short summaries appended after each milestone.
 - The pilot runner, analysis tables and smoke plan cover every role in `policy/permissions.py` (tested). The smoke runner's support episode no longer includes `process_refund`, which had moved to billing.
 - Frozen list now includes `tools/impl.py` and `scenarios/generator.py`; `.github/CODEOWNERS` lists every frozen file (tested).
 - `CLAUDE.md`, `docs/requirements.md` and the README describe four roles. 558 tests pass.
+
+## STOP 2: qwen3:8b pilot (2026-09-27)
+
+- 96/96 episodes, 32 cells × 3, frozen commit (clean provenance on every episode), $0. Model time 6.3 h; wall-clock 8.3 h because the Mac idle-slept (fixed mid-run with `caffeinate -w`).
+- No harness bugs found:
+  - 0 label inconsistencies in 1,582 events, and no out-of-role call allowed;
+  - 600/600 tasks ended normally, with no context overflow or turn-limit hit (peak prompt 19,942 of 32,768);
+  - 0 retries;
+  - every low-success task type traced to model behaviour, with no impossible tasks. `create_listing`: qwen3 passes the SKU instead of the returned listing ID to `upload_image`. `reprice_listing`: wrong price (checker targets verified against the report it read). `competitor_scan`: `null` prices rejected as format errors.
+  - All 150 P2-flagged report entries are genuine fabrications (138 copy another competitor's price), not rounding.
+- Detector: no feature broken; only `expansion_rate` under C1 is constant, by design. Effective features: C3 weighted 5/6 and IsolationForest 4/6; C4 weighted 6/6 and IsolationForest 4/6. RQ3 is not evaluable at pilot scale (4–5 fit and 3–4 calibration episodes per control); no tuning proposed.
+- Read-before-write: support 84/84 tasks; billing 10/150.
+- Results in `results/pilot-qwen3/` (local; pilot numbers are for bug-finding only).
