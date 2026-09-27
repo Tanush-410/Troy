@@ -99,6 +99,22 @@ It writes to `results/`:
 
 Every number is computed from the logs. Confidence intervals are 95% bootstraps over episodes, and a cell with no data reads "n/a".
 
+## Dashboard (interactive)
+
+A read-only Streamlit dashboard over the run logs, for exploring results interactively while the pilot is still running. It never writes to `logs/` or `transcripts/` (the live demo only writes under `logs/demo/`) and it imports every number from `analysis/`, so the GUI cannot disagree with `analysis.run_all`. The dependencies live in a non-default `gui` group, so `uv sync` is unchanged:
+
+```sh
+uv run --group gui streamlit run gui/app.py
+```
+
+Pick the runs and filters in the sidebar (run folders, agent role, model, drift condition, control condition), then use the views:
+
+- **Overview** — the five headline metrics, calls per drift type per agent, C1 vs C2 harmful rate by condition, and the share of harmful calls static RBAC blocked;
+- **Episode explorer** — every episode with its task outcomes, per-step tool calls (drift types and harm rules), the D_t and PLDD score timeline, the transcript, and a same-seed C1 vs C2 comparison;
+- **Detector** — ROC curves, TPR at 5% FPR, AUROC with CI, lead time, and the feature ablation, computed from the replayed logs only;
+- **Cross-agent** — the three-stage injection flow (competitor page -> tainted price report -> listing action) with the cross-agent taint table;
+- **Live demo** — run one episode on demand (scripted by default, local `qwen3:8b`, or Groq). Real models are disabled while an experiment is running, and a Groq run shows its token and USD estimate and needs an explicit confirmation.
+
 ## Full runs
 
 `experiments/pilot.py` runs every cell with paired seeds and is resumable. It refuses to start if any frozen file (oracle, success checkers, permission tables, prompts) differs from its last commit. For example:
@@ -127,5 +143,6 @@ uv run python -m experiments.full_estimate logs/<groq smoke run> logs/<qwen smok
 | `detector/` | PLDD features, combiners, calibration, replay; reads only the detector view of the log |
 | `experiments/` | Episode runner, smoke test, pilot/full runner, cost estimates, provenance |
 | `analysis/` | Metrics, statistics, tables, figures, `run_all` |
+| `gui/` | Read-only Streamlit dashboard (`gui/app.py`), log loading, live demo |
 | `tests/` | pytest suite |
 | `logs/`, `transcripts/`, `results/` | Generated output (`logs/` and `transcripts/` are gitignored) |
