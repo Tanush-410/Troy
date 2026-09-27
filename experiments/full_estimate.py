@@ -3,7 +3,7 @@
 Everything per-task is measured from a smoke run (per-turn usage in the
 transcripts, wall-clock from event timestamps); the experiment design and the
 rate limits are stated assumptions, printed with the result.
-    uv run python -m experiments.full_estimate logs/<groq run> logs/<qwen run>
+    uv run python -m experiments.full_estimate --groq logs/<groq run> [...] --qwen logs/<qwen run> [...]
 """
 
 from __future__ import annotations
@@ -17,8 +17,9 @@ from datetime import datetime
 from pathlib import Path
 
 from experiments.cost import PRICES
+from policy.permissions import ROLES as PERMISSION_ROLES
 
-ROLES = 3
+ROLES = len(PERMISSION_ROLES)  # every role in policy/permissions.py
 LIVE_CONTROLS = 2  # C1, C2 (C3/C4 are offline replays)
 NON_D1_DRIFTS = 3  # D0, D2, D3
 TASKS_NON_D1 = 5  # assumption until milestone 6 fixes episode length
@@ -42,14 +43,17 @@ class Measured:
     retry_wait_s: float
 
 
-def measure(run_dir: Path) -> Measured:
-    transcripts = run_dir.parent.parent / "transcripts" / run_dir.name
-    per_task: dict[tuple[str, str], list[dict]] = defaultdict(list)
-    for f in sorted(transcripts.glob("*.jsonl")):
-        for line in f.read_text().splitlines():
-            e = json.loads(line)
-            if e.get("role") == "assistant":
-                per_task[(f.stem, e["task_id"])].append(e["usage"])
+def measure(run_dirs: Path | list[Path]) -> Measured:
+    """Per-task measurements pooled over one or more smoke runs of the same model."""
+    dirs = [run_dirs] if isinstance(run_dirs, Path) else run_dirs
+    per_task: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
+    for run_dir in dirs:
+        transcripts = run_dir.parent.parent / "transcripts" / run_dir.name
+        for f in sorted(transcripts.glob("*.jsonl")):
+            for line in f.read_text().splitlines():
+                e = json.loads(line)
+                if e.get("role") == "assistant":
+                    per_task[(run_dir.name, f.stem, e["task_id"])].append(e["usage"])
     turns, inp, out, cached, growth, first, prompts = [], [], [], [], [], [], []
     for usages in per_task.values():
         totals = [u["input_tokens"] + u["cache_read_tokens"] + u["cache_write_tokens"] for u in usages]
@@ -61,8 +65,8 @@ def measure(run_dir: Path) -> Measured:
         growth.append(totals[-1] + usages[-1]["output_tokens"] - totals[0] + INSTRUCTION_TOKENS)
         prompts.extend(totals)
 
-    episodes = [json.loads(line) for line in (run_dir / "episodes.jsonl").read_text().splitlines()]
-    latencies = _turn_latencies(run_dir, transcripts)
+    episodes = [json.loads(line) for d in dirs for line in (d / "episodes.jsonl").read_text().splitlines()]
+    latencies = [x for d in dirs for x in _turn_latencies(d, d.parent.parent / "transcripts" / d.name)]
     return Measured(
         model=episodes[0]["model"], tasks=len(per_task),
         turns_per_task=statistics.mean(turns), input_per_task=statistics.mean(inp),
@@ -150,8 +154,8 @@ def days_rate_limited(p: Plan, tpm: float, rpd: float | None, tpd: float | None)
     return max(limits)
 
 
-def report(groq_dir: Path, qwen_dir: Path) -> None:
-    g, q = measure(groq_dir), measure(qwen_dir)
+def report(groq_dirs: list[Path], qwen_dirs: list[Path]) -> None:
+    g, q = measure(groq_dirs), measure(qwen_dirs)
     for m in (g, q):
         print(f"measured {m.model} over {m.tasks} tasks: {m.turns_per_task:.1f} turns/task, "
               f"{m.input_per_task:,.0f} in + {m.output_per_task:,.0f} out tokens/task, "
@@ -186,4 +190,9 @@ def report(groq_dir: Path, qwen_dir: Path) -> None:
 
 
 if __name__ == "__main__":
-    report(Path(sys.argv[1]), Path(sys.argv[2]))
+    # usage: full_estimate --groq <dir> [<dir> ...] --qwen <dir> [<dir> ...]
+    args = sys.argv[1:]
+    gi, qi = args.index("--groq"), args.index("--qwen")
+    groq = [Path(a) for a in args[gi + 1: qi if qi > gi else None]]
+    qwen = [Path(a) for a in args[qi + 1: gi if gi > qi else None]]
+    report(groq, qwen)

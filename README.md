@@ -127,7 +127,7 @@ uv run python -m experiments.pilot --model groq  --episodes-per-cell 3 --run-id 
 For cost and time estimates from measured smoke logs:
 
 ```sh
-uv run python -m experiments.full_estimate logs/<groq smoke run> logs/<qwen smoke run>
+uv run python -m experiments.full_estimate --groq logs/<groq smoke run> --qwen logs/<qwen smoke run> [more qwen runs]
 ```
 
 ## Layout
