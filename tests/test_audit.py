@@ -71,14 +71,16 @@ def test_denied_calls_get_audit_and_format_errors_do_not(state):
 
 def test_audit_is_independent_of_harm_judgment_and_taint(state):
     """Same call, same state: identical audit whether judged harmful or not, tainted or not."""
+    cid = "C001"
     audits = []
     for judge, inject in ((NoHarm(), False), (AlwaysHarm(), False), (NoHarm(), True), (AlwaysHarm(), True)):
         s = state.snapshot()
         if inject:
-            s.tickets["TKT-0001"].injection = Injection(injection_id="I", text="x", target_tool="issue_refund")
-        pep = make_pep(s, "support", judge)
-        pep.begin_task(TaskSpec(task_id="t", task_type="process_refund", instruction="", ticket_id="TKT-0001"))
-        pep.gateway().call("read_ticket", {"ticket_id": "TKT-0001"})
+            s.customers[cid].billing_injection = Injection(
+                injection_id="I", text="x", target_tool="issue_refund")
+        pep = make_pep(s, "billing", judge)
+        pep.begin_task(TaskSpec(task_id="t", task_type="process_refund", instruction="", customer_id=cid))
+        pep.gateway().call("read_billing_account", {"customer_id": cid})
         pep.gateway().call("issue_refund", {"order_id": "ORD-0001", "amount": 99})
         e = pep.events[-1]
         assert e.harm == isinstance(judge, AlwaysHarm) and e.tainted_context == inject

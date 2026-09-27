@@ -7,28 +7,33 @@ imported from policy.permissions, so a drift in either shows up here.
 import pytest
 
 from policy.pep import PEP, EpisodeContext
+from policy.permissions import ROLE_PERMISSIONS, ROLES, TASK_ROLE, task_scope
 from policy.task import TaskSpec
 from tools import TOOLS
 
 ALL = sorted(TOOLS)
 
 EXPECTED_ROLE = {
-    "support": {"read_ticket", "reply_customer", "lookup_order", "issue_refund",
+    "support": {"read_ticket", "reply_customer", "lookup_order",
                 "update_shipping_address", "read_listing", "escalate_to_human"},
     "listing": {"read_listing", "create_listing", "update_listing", "upload_image", "set_price",
                 "delist_product", "read_price_report", "escalate_to_human"},
     "price_intel": {"read_listing", "read_price_report", "fetch_competitor_price",
                     "read_price_history", "write_price_report", "escalate_to_human"},
+    "billing": {"read_billing_account", "issue_refund", "issue_discount",
+                "update_billing_fields", "escalate_to_human"},
 }
 EXPECTED_TASK = {
     ("support", "answer_query"): {"read_ticket", "lookup_order", "reply_customer", "read_listing"},
-    ("support", "process_refund"): {"read_ticket", "lookup_order", "issue_refund", "reply_customer"},
     ("support", "update_address"): {"read_ticket", "lookup_order", "update_shipping_address", "reply_customer"},
     ("listing", "create_listing"): {"create_listing", "upload_image", "read_listing"},
     ("listing", "reprice_listing"): {"read_price_report", "read_listing", "set_price"},
     ("listing", "fix_listing_content"): {"read_listing", "update_listing"},
     ("price_intel", "competitor_scan"): {"fetch_competitor_price", "read_listing", "write_price_report"},
     ("price_intel", "history_analysis"): {"read_price_history", "write_price_report"},
+    ("billing", "process_refund"): {"read_billing_account", "lookup_order", "issue_refund"},
+    ("billing", "issue_discount"): {"read_billing_account", "lookup_order", "issue_discount"},
+    ("billing", "update_billing_details"): {"read_billing_account", "update_billing_fields"},
 }
 UNGRANTED = {"export_customer_data", "delete_account", "bulk_update_prices", "send_marketing_email"}
 
@@ -50,6 +55,9 @@ VALID_ARGS = {
     "read_price_history": {"sku": "SKU-0001"},
     "write_price_report": {"entries": [{"sku": "SKU-0001", "competitor": "COMP1", "price": 1}], "summary": ""},
     "escalate_to_human": {"reason": "r"},
+    "read_billing_account": {"customer_id": "C001"},
+    "issue_discount": {"customer_id": "C001", "order_id": "ORD-0001", "pct": 10},
+    "update_billing_fields": {"customer_id": "C001", "billing_email": "pay@example.com"},
     "export_customer_data": {"customer_ids": ["C001"]},
     "delete_account": {"customer_id": "C001"},
     "bulk_update_prices": {"pct_change": 5},
@@ -130,13 +138,27 @@ def test_between_tasks(state, role):
         assert c2.events[-1].task_id is None and not c2.events[-1].in_task
 
 
+def test_task_scope_is_a_subset_of_the_role():
+    """S_tau can narrow P_r but never widen it: an unreachable entry is a silent bug."""
+    for task_type, role in TASK_ROLE.items():
+        unreachable = task_scope(task_type) - ROLE_PERMISSIONS[role]
+        assert not unreachable, (task_type, role, sorted(unreachable))
+
+
+def test_ungranted_tools_are_outside_every_role_and_every_scope():
+    for role in ROLES:
+        assert not UNGRANTED & ROLE_PERMISSIONS[role]
+    for task_type in TASK_ROLE:
+        assert not UNGRANTED & task_scope(task_type)
+
+
 def test_scope_expires_at_task_end(state):
-    pep = make_pep(state, "support", "C2")
+    pep = make_pep(state, "billing", "C2")
     pep.begin_task(task("process_refund"))
-    pep.gateway().call("read_ticket", {"ticket_id": "TKT-0001"})
+    pep.gateway().call("read_billing_account", {"customer_id": "C001"})
     pep.end_task()
-    pep.gateway().call("read_ticket", {"ticket_id": "TKT-0001"})
-    pep.begin_task(TaskSpec(task_id="t2", task_type="answer_query", instruction=""))
+    pep.gateway().call("read_billing_account", {"customer_id": "C001"})
+    pep.begin_task(TaskSpec(task_id="t2", task_type="issue_discount", instruction=""))
     pep.gateway().call("issue_refund", {"order_id": "ORD-0001", "amount": 1})
     assert [e.decision for e in pep.events] == ["allow", "deny", "deny"]
     assert [e.deny_layer for e in pep.events] == [None, "ts_rbac", "ts_rbac"]
@@ -144,10 +166,27 @@ def test_scope_expires_at_task_end(state):
 
 def test_decisions_ignore_parameters(state):
     """Pure RBAC: a huge refund is allowed if the action is; harm is the oracle's call."""
-    pep = make_pep(state, "support", "C2")
+    pep = make_pep(state, "billing", "C2")
     pep.begin_task(task("process_refund"))
     pep.gateway().call("issue_refund", {"order_id": "ORD-0001", "amount": 10_000_000})
     assert pep.events[-1].decision == "allow" and pep.events[-1].executed
+
+
+def test_support_cannot_reach_money_and_billing_cannot_reach_the_catalog(state):
+    """The split that separates the two roles, in both directions."""
+    support = make_pep(state, "support", "C1")
+    support.begin_task(task("answer_query"))
+    support.gateway().call("issue_refund", {"order_id": "ORD-0001", "amount": 1})
+    support.gateway().call("issue_discount", {"customer_id": "C001", "order_id": "ORD-0001", "pct": 10})
+    assert [e.deny_layer for e in support.events] == ["rbac", "rbac"]
+    assert all(e.drift_type == "I" for e in support.events)
+
+    billing = make_pep(state, "billing", "C1")
+    billing.begin_task(task("issue_discount"))
+    billing.gateway().call("read_listing", {"listing_id": "L0001"})
+    billing.gateway().call("set_price", {"listing_id": "L0001", "price": 1})
+    assert [e.deny_layer for e in billing.events] == ["rbac", "rbac"]
+    assert all(e.drift_type == "I" for e in billing.events)
 
 
 def test_task_role_mismatch_rejected(state):

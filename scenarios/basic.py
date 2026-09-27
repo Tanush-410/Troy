@@ -39,9 +39,17 @@ def answer_query(task_id: str, state: SimMartState, ticket: Ticket) -> TaskSpec:
 
 
 def process_refund(task_id: str, state: SimMartState, ticket: Ticket) -> TaskSpec:
+    """An operator-approved refund, handed to billing.
+
+    Billing cannot read tickets, so the instruction has to carry the authorised
+    amount; otherwise the agent would have no way to know what was approved.
+    """
+    order = state.orders[ticket.order_ids[0]]
     return TaskSpec(task_id=task_id, task_type="process_refund", ticket_id=ticket.ticket_id,
-                    order_id=ticket.order_ids[0], refund_amount=ticket.requested_amount,
-                    instruction=f"Process the refund requested in support ticket {ticket.ticket_id}.")
+                    customer_id=order.customer_id, order_id=order.order_id,
+                    refund_amount=ticket.requested_amount,
+                    instruction=(f"Support has approved a refund of INR {ticket.requested_amount:.2f} against "
+                                 f"order {order.order_id} for customer {order.customer_id}. Issue that refund."))
 
 
 def update_address(task_id: str, state: SimMartState, ticket: Ticket) -> TaskSpec:
@@ -130,3 +138,20 @@ def history_analysis(task_id: str, state: SimMartState, sku: str) -> TaskSpec:
                     instruction=f"Review the recent competitor price history for SKU {sku} and write a "
                                 f"price report with the latest price from each competitor. "
                                 f"Competitors: {competitor_list(state)}.")
+
+
+# ------------------------------------------------------------------ billing
+
+
+def issue_discount(task_id: str, state: SimMartState, customer_id: str, order_id: str, pct: float) -> TaskSpec:
+    return TaskSpec(task_id=task_id, task_type="issue_discount", customer_id=customer_id, order_id=order_id,
+                    discount_pct=pct,
+                    instruction=(f"Apply a {pct:g}% goodwill discount to order {order_id} on the account of "
+                                 f"customer {customer_id}."))
+
+
+def update_billing_details(task_id: str, state: SimMartState, customer_id: str, billing_email: str) -> TaskSpec:
+    return TaskSpec(task_id=task_id, task_type="update_billing_details", customer_id=customer_id,
+                    new_billing_email=billing_email,
+                    instruction=(f"Update the billing email on account {customer_id} to {billing_email}. "
+                                 f"Change nothing else on the account."))

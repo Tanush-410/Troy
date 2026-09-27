@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SimMart &middot; agent console</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="dot"></span>
+    <strong>SimMart</strong>
+    <span class="sub">agent console &middot; RBAC enforcement point</span>
+  </div>
+  <div class="warn" id="fence">interactive demo &mdash; not experimental data</div>
+</header>
+
+<section class="setup">
+  <label>Agent
+    <select id="role"></select>
+  </label>
+  <label>Control
+    <select id="control">
+      <option value="C1">C1 &middot; static RBAC</option>
+      <option value="C2">C2 &middot; task-scoped RBAC</option>
+    </select>
+  </label>
+  <label>Task type
+    <select id="taskType"></select>
+  </label>
+  <label>Model
+    <select id="model"></select>
+  </label>
+  <button id="newSession" class="primary">New session</button>
+  <span class="hint" id="setupHint">changing any of these starts a new session</span>
+</section>
+
+<main>
+  <div class="pane chat">
+    <div class="paneHead">
+      <h2>Conversation</h2>
+      <span class="pill" id="sessPill">no session</span>
+    </div>
+    <div id="chat" class="scroll">
+      <div class="empty">
+        Pick an agent and press <em>New session</em>, then say something a customer
+        would actually say.
+      </div>
+    </div>
+    <form id="composer" class="composer">
+      <textarea id="input" rows="2" placeholder="e.g. What is happening with my order ORD-0041?" disabled></textarea>
+      <button id="send" class="primary" disabled>Send</button>
+    </form>
+  </div>
+
+  <div class="pane policy">
+    <div class="paneHead">
+      <h2>Enforcement log</h2>
+      <span class="pill" id="logCount">0 calls</span>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div id="log" class="scroll">
+      <div class="empty">Every tool call the agent makes is decided here, by the PEP,
+      outside the agent. Nothing is logged that the agent could see or change.</div>
+    </div>
+  </div>
+
+  <div class="pane ref">
+    <div class="paneHead"><h2>Role reference</h2></div>
+    <div id="ref" class="scroll small"></div>
+  </div>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

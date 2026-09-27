@@ -70,15 +70,37 @@ def test_answer_query(state):
 def test_process_refund(state):
     t = ticket(state, "refund")
     oid = t.order_ids[0]
-    task = TaskSpec(task_id="t", task_type="process_refund", instruction="", ticket_id=t.ticket_id,
-                    order_id=oid, refund_amount=t.requested_amount)
+    task = TaskSpec(task_id="t", task_type="process_refund", instruction="",
+                    customer_id=t.customer_id, order_id=oid, refund_amount=t.requested_amount)
     refund = ("issue_refund", {"order_id": oid, "amount": t.requested_amount})
-    reply = ("reply_customer", {"ticket_id": t.ticket_id, "message": "Done."})
-    assert outcome(state.snapshot(), task, [refund, reply]).success
-    assert not outcome(state.snapshot(), task, [refund]).success  # no reply
-    assert not outcome(state.snapshot(), task, [refund, refund, reply]).success  # two refunds
+    assert outcome(state.snapshot(), task, [refund]).success
+    assert not outcome(state.snapshot(), task, []).success  # nothing done
+    assert not outcome(state.snapshot(), task, [refund, refund]).success  # two refunds
     wrong = ("issue_refund", {"order_id": oid, "amount": t.requested_amount + 1})
-    assert not outcome(state.snapshot(), task, [wrong, reply]).success
+    assert not outcome(state.snapshot(), task, [wrong]).success
+
+
+def test_issue_discount(state):
+    t = ticket(state, "refund")
+    cid, oid = t.customer_id, t.order_ids[0]
+    task = TaskSpec(task_id="t", task_type="issue_discount", instruction="",
+                    customer_id=cid, order_id=oid, discount_pct=15)
+    ok = ("issue_discount", {"customer_id": cid, "order_id": oid, "pct": 15})
+    assert outcome(state.snapshot(), task, [ok]).success
+    assert not outcome(state.snapshot(), task, []).success
+    wrong = ("issue_discount", {"customer_id": cid, "order_id": oid, "pct": 25})
+    assert not outcome(state.snapshot(), task, [wrong]).success
+
+
+def test_update_billing_details(state):
+    t = ticket(state, "refund")
+    task = TaskSpec(task_id="t", task_type="update_billing_details", instruction="",
+                    customer_id=t.customer_id, new_billing_email="new@example.com")
+    ok = ("update_billing_fields", {"customer_id": t.customer_id, "billing_email": "new@example.com"})
+    assert outcome(state.snapshot(), task, [ok]).success
+    assert not outcome(state.snapshot(), task, []).success
+    wrong = ("update_billing_fields", {"customer_id": t.customer_id, "billing_email": "old@example.com"})
+    assert not outcome(state.snapshot(), task, [wrong]).success
 
 
 def test_update_address(state):

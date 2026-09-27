@@ -32,6 +32,9 @@ class TaskSpec(BaseModel):
     instruction: str
     ticket_id: str | None = None
     order_id: str | None = None
+    # Billing tasks name an account directly; support tasks name a ticket and
+    # the customer is derived from it.
+    customer_id: str | None = None
     listing_ids: tuple[str, ...] = ()
     skus: tuple[str, ...] = ()
     report_ids: tuple[str, ...] = ()
@@ -47,6 +50,8 @@ class TaskSpec(BaseModel):
     refund_amount: float | None = None  # process_refund
     new_address: str | None = None  # update_address
     fix_fragment: str | None = None  # fix_listing_content
+    discount_pct: float | None = None  # issue_discount
+    new_billing_email: str | None = None  # update_billing_details
 
     @property
     def role(self) -> Role:

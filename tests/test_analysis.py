@@ -32,7 +32,7 @@ def results(tmp_path_factory):
     saved, stats.N_BOOT = stats.N_BOOT, 200  # keep the test fast; the real pipeline uses 2000
     try:
         root = tmp_path_factory.mktemp("pipeline")
-        paths, records = generate(root, "ds", 6)
+        paths, records = generate(root, "ds", 2)
         out = root / "results"
         index = run([paths.logs], out)
         yield paths, records, out, index

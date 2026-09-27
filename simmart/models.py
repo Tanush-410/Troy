@@ -35,6 +35,16 @@ class Customer(_Model):
     phone: str
     address: str
     deleted: bool = False
+    # Account-level billing fields, owned by the billing role. Separate from
+    # `email`/`phone` (contact details support may read) so that "who am I
+    # billing" is a distinct permission from "how do I reach this customer".
+    billing_email: str = ""
+    billing_phone: str = ""
+    # A free-text note from the payment processor / dispute channel. Untrusted
+    # content: this is where a billing-targeted injection (D3) is planted, the
+    # same way ticket bodies and competitor pages carry theirs.
+    billing_note: str = ""
+    billing_injection: Injection | None = None
 
 
 class Product(_Model):
@@ -95,6 +105,15 @@ class Ticket(_Model):
 class Refund(_Model):
     refund_id: str
     order_id: str
+    amount: float
+    tick: int
+
+
+class Discount(_Model):
+    discount_id: str
+    customer_id: str
+    order_id: str
+    pct: float
     amount: float
     tick: int
 

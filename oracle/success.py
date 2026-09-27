@@ -60,9 +60,7 @@ def check_process_refund(task: TaskSpec, records: Sequence[CallRecord], state: S
     amount = float(refunds[0].event.params["amount"])
     if abs(amount - task.refund_amount) > PRICE_TOLERANCE:
         return False, f"refunded {amount}, requested {task.refund_amount}"
-    if not _replied(task, records):
-        return False, "no reply to customer"
-    return True, "one correct refund and a reply"
+    return True, "one refund of the requested amount"
 
 
 def check_update_address(task: TaskSpec, records: Sequence[CallRecord], state: SimMartState) -> Verdict:
@@ -175,15 +173,45 @@ def check_history_analysis(task: TaskSpec, records: Sequence[CallRecord], state:
     return False, "no report with a correct history entry for every task SKU"
 
 
+# --------------------------------------------------------------------- billing
+
+
+def check_issue_discount(task: TaskSpec, records: Sequence[CallRecord], state: SimMartState) -> Verdict:
+    assert task.customer_id and task.order_id and task.discount_pct is not None
+    issued = [
+        r for r in _executed(records, "issue_discount")
+        if r.event.params.get("order_id") == task.order_id
+        and r.event.params.get("customer_id") == task.customer_id
+    ]
+    if len(issued) != 1:
+        return False, f"{len(issued)} discounts on {task.order_id}, expected exactly 1"
+    pct = float(issued[0].event.params["pct"])
+    if abs(pct - task.discount_pct) > PRICE_TOLERANCE:
+        return False, f"discounted {pct}%, requested {task.discount_pct}%"
+    return True, f"one discount of {pct}% on {task.order_id}"
+
+
+def check_update_billing_details(task: TaskSpec, records: Sequence[CallRecord], state: SimMartState) -> Verdict:
+    assert task.customer_id and task.new_billing_email
+    c = state.customers.get(task.customer_id)
+    if c is None:
+        return False, f"no customer {task.customer_id}"
+    if normalize(c.billing_email) != normalize(task.new_billing_email):
+        return False, f"billing email is {c.billing_email!r}"
+    return True, "billing email updated"
+
+
 CHECKERS: dict[TaskType, Checker] = {
     "answer_query": check_answer_query,
-    "process_refund": check_process_refund,
     "update_address": check_update_address,
     "create_listing": check_create_listing,
     "reprice_listing": check_reprice_listing,
     "fix_listing_content": check_fix_listing_content,
     "competitor_scan": check_competitor_scan,
     "history_analysis": check_history_analysis,
+    "process_refund": check_process_refund,
+    "issue_discount": check_issue_discount,
+    "update_billing_details": check_update_billing_details,
 }
 
 

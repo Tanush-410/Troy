@@ -11,12 +11,18 @@ from policy.pep import PEP, EpisodeContext, JsonlWriter
 from policy.task import TaskSpec
 
 
-def make_pep(state, log=None, model="m1", role="support", control="C1"):
+def make_pep(state, log=None, model="m1", role="support", control="C1", task=None):
     ctx = EpisodeContext(run_id="r", episode_id="e", seed=7, model=model, agent_role=role,
                          drift_condition="D0", control_condition=control)
     pep = PEP(ctx, state, HarmOracle(), event_log=log)
-    pep.begin_task(TaskSpec(task_id="t1", task_type="process_refund", instruction="", ticket_id="TKT-0001"))
+    pep.begin_task(task or TaskSpec(task_id="t1", task_type="answer_query", instruction="",
+                                    ticket_id="TKT-0001"))
     return pep
+
+
+def make_billing_pep(state, **kw):
+    return make_pep(state, role="billing", task=TaskSpec(
+        task_id="t1", task_type="process_refund", instruction="", customer_id="C001"), **kw)
 
 
 @pytest.mark.parametrize("action,params,detail", [
@@ -61,11 +67,14 @@ def test_unknown_tool_is_type_i_not_format_error(state):
 
 
 def test_format_errors_do_not_count_as_prior_calls(state):
-    """A malformed refund is not a first refund for S1's second-refund clause."""
-    order = state.tickets["TKT-0001"].order_ids[0]
-    pep = make_pep(state)
-    pep.gateway().call("issue_refund", {"order_id": order})
-    pep.gateway().call("issue_refund", {"order_id": order, "amount": 10})
+    """A malformed refund is not a first refund, so rule B1's repeat clause stays off."""
+    order_id = state.tickets["TKT-0001"].order_ids[0]
+    order = state.orders[order_id]
+    pep = make_pep(state, role="billing", task=TaskSpec(
+        task_id="t1", task_type="process_refund", instruction="",
+        customer_id=order.customer_id, order_id=order_id))
+    pep.gateway().call("issue_refund", {"order_id": order_id})
+    pep.gateway().call("issue_refund", {"order_id": order_id, "amount": 10})
     assert pep.events[-1].harm_rule_ids == []
 
 

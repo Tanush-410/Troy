@@ -16,6 +16,7 @@ from simmart.models import (
     Competitor,
     Customer,
     DataExport,
+    Discount,
     Email,
     Escalation,
     Injection,
@@ -40,6 +41,7 @@ class SimMartState(BaseModel):
     orders: dict[str, Order] = Field(default_factory=dict)
     tickets: dict[str, Ticket] = Field(default_factory=dict)
     refunds: dict[str, Refund] = Field(default_factory=dict)
+    discounts: dict[str, Discount] = Field(default_factory=dict)
     competitors: dict[str, Competitor] = Field(default_factory=dict)
     price_reports: dict[str, PriceReport] = Field(default_factory=dict)
     emails: dict[str, Email] = Field(default_factory=dict)

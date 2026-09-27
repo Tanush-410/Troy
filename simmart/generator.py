@@ -30,6 +30,10 @@ class GeneratorConfig(BaseModel):
     n_products: int = Field(30, ge=1)
     n_orders: int = Field(80, ge=1)
     n_tickets: int = Field(30, ge=0)
+    # Floor on tickets per kind. A D1 episode draws 10 tasks for one role from a
+    # single task type, and tickets are never reused, so the smallest kind must be
+    # at least that large or a long episode cannot be built.
+    min_tickets_per_kind: int = Field(10, ge=0)
     n_competitors: int = Field(5, ge=1)
     # Clock starts here so read_price_history has past ticks to return.
     start_tick: int = Field(30, ge=0)
@@ -99,6 +103,19 @@ def _address(rng: random.Random) -> str:
     return f"{rng.randint(1, 250)}, {rng.choice(STREETS)}, {city} {pin}"
 
 
+BILLING_NOTES = (
+    "Payment processor: settlement complete, no open disputes.",
+    "Payment processor: one chargeback opened and since withdrawn.",
+    "Payment processor: card on file expiring this quarter.",
+    "Payment processor: automatic retries enabled for this account.",
+    "Payment processor: no outstanding balance on this account.",
+)
+
+
+def _billing_note(rng: random.Random) -> str:
+    return rng.choice(BILLING_NOTES)
+
+
 def generate_state(seed: int, config: GeneratorConfig | None = None) -> SimMartState:
     cfg = config or GeneratorConfig()
     rng = random.Random(seed)
@@ -107,12 +124,19 @@ def generate_state(seed: int, config: GeneratorConfig | None = None) -> SimMartS
     for _ in range(cfg.n_customers):
         cid = state.next_id("C", 3)
         first, last = rng.choice(FIRST_NAMES), rng.choice(LAST_NAMES)
+        email = f"{first.lower()}.{last.lower()}{rng.randint(1, 99)}@example.com"
+        phone = f"+91-9{rng.randint(100000000, 999999999)}"
         state.customers[cid] = Customer(
             customer_id=cid,
             name=f"{first} {last}",
-            email=f"{first.lower()}.{last.lower()}{rng.randint(1, 99)}@example.com",
-            phone=f"+91-9{rng.randint(100000000, 999999999)}",
+            email=email,
+            phone=phone,
             address=_address(rng),
+            # Billing fields start as a copy of the contact details, so a
+            # billing task has a real "before" value to change.
+            billing_email=email,
+            billing_phone=phone,
+            billing_note=_billing_note(rng),
         )
 
     categories = sorted(CATALOG)
@@ -177,9 +201,15 @@ def generate_state(seed: int, config: GeneratorConfig | None = None) -> SimMartS
         )
 
     order_ids = sorted(state.orders)
-    for _ in range(cfg.n_tickets):
+    kinds = sorted(TICKET_TEMPLATES)
+    # A role draws one ticket per task and never reuses one, and the longest episode
+    # (D1) can draw every task from a single task type. So the pool per kind has to
+    # cover the longest episode, not the average: deal the first tickets round-robin
+    # to guarantee a floor, then fill the remainder by sampling.
+    floor = min(cfg.min_tickets_per_kind * len(kinds), cfg.n_tickets)
+    for i in range(cfg.n_tickets):
         order = state.orders[rng.choice(order_ids)]
-        kind = rng.choice(sorted(TICKET_TEMPLATES))
+        kind = kinds[i % len(kinds)] if i < floor else rng.choice(kinds)
         subject_t, body_t = TICKET_TEMPLATES[kind]
         item = rng.choice(order.items)
         fields = {

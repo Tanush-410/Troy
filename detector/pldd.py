@@ -49,7 +49,8 @@ class EpisodeScore:
 
 class PLDD:
     def __init__(self, window: int = 5, features: Sequence[str] = FEATURES,
-                 weights: dict[str, float] | None = None, seed: int = 0) -> None:
+                 weights: dict[str, float] | None = None, seed: int = 0,
+                 n_estimators: int = 100) -> None:
         unknown = set(features) - set(FEATURES)
         if unknown:
             raise ValueError(f"unknown features: {unknown}")
@@ -58,6 +59,7 @@ class PLDD:
         self._idx = [FEATURES.index(f) for f in self.features]
         self.weights = np.array([(weights or {}).get(f, 1.0) for f in self.features])
         self.seed = seed
+        self.n_estimators = n_estimators
         self.baseline: Baseline | None = None
         self._forest: IsolationForest | None = None
         self.thresholds: dict[str, float] = {}
@@ -67,7 +69,7 @@ class PLDD:
     def fit(self, episodes: Sequence[Sequence[DetectorEvent]], all_actions: Sequence[str]) -> PLDD:
         self.baseline = fit_baseline(episodes, self.window, all_actions)
         z = np.array([self._z(win) for ep in episodes for win in windows(ep, self.window)])
-        self._forest = IsolationForest(n_estimators=200, random_state=self.seed).fit(z)
+        self._forest = IsolationForest(n_estimators=self.n_estimators, random_state=self.seed).fit(z)
         return self
 
     def calibrate(self, episodes: Sequence[Sequence[DetectorEvent]], fpr: float = 0.05) -> PLDD:
@@ -102,23 +104,48 @@ class PLDD:
         return float(scores.max())
 
     def score(self, ep: Sequence[DetectorEvent], episode_id: str | None = None) -> EpisodeScore:
+        return self.score_many([ep], [episode_id])[0]
+
+    def score_many(self, episodes: Sequence[Sequence[DetectorEvent]],
+                   episode_ids: Sequence[str | None] | None = None) -> list[EpisodeScore]:
+        """Score many episodes with a single IsolationForest call.
+
+        Identical per-episode results to calling `score` in a loop: the forest is
+        deterministic and does not depend on batch composition. Batching matters
+        because `score_samples` costs far more in per-call overhead than per row.
+        """
         assert self.baseline is not None, "fit first"
-        wins = windows(ep, self.window)
-        raws = [raw_features(win, self.baseline) for win in wins]
-        zs = [standardize(raw, self.baseline) for raw in raws]
-        if wins:
-            weighted, iforest = self._combine_many(np.array([[z[i] for i in self._idx] for z in zs]))
-        steps = [
-            StepScore(step=win[-1].step, task_id=win[-1].task_id, raw=tuple(raw), z=tuple(z),
-                      weighted=float(weighted[k]), iforest=float(iforest[k]), drift_jsd=drift_jsd(win, self.baseline))
-            for k, (win, raw, z) in enumerate(zip(wins, raws, zs))
-        ]
-        alerts: dict[str, int | None] = {}
-        for c in COMBINERS:
-            t = self.thresholds.get(c)
-            alerts[c] = next((s.step for s in steps if t is not None and getattr(s, c) > t), None)
-        eid = episode_id if episode_id is not None else (ep[0].episode_id if ep else "")
-        return EpisodeScore(episode_id=eid, steps=tuple(steps), alert_step=alerts)
+        ids = list(episode_ids) if episode_ids is not None else [None] * len(episodes)
+        per_ep: list[tuple[list[list[float]], list[tuple[float, ...]], list[tuple[float, ...]]]] = []
+        flat: list[list[float]] = []
+        for ep in episodes:
+            wins = windows(ep, self.window)
+            raws = [tuple(raw_features(w, self.baseline)) for w in wins]
+            zs = [tuple(standardize(list(r), self.baseline)) for r in raws]
+            per_ep.append((wins, raws, zs))  # type: ignore[arg-type]
+            flat.extend(z[i] for z in zs for i in self._idx)
+        weighted, iforest = self._combine_many(
+            np.array(flat, dtype=float).reshape(-1, len(self.features)))
+
+        out: list[EpisodeScore] = []
+        cursor = 0
+        for ep, (wins, raws, zs), eid in zip(episodes, per_ep, ids, strict=True):
+            n = len(wins)
+            steps = [
+                StepScore(step=win[-1].step, task_id=win[-1].task_id, raw=raws[k], z=zs[k],
+                          weighted=float(weighted[cursor + k]), iforest=float(iforest[cursor + k]),
+                          drift_jsd=drift_jsd(win, self.baseline))
+                for k, win in enumerate(wins)
+            ]
+            cursor += n
+            alerts: dict[str, int | None] = {}
+            for c in COMBINERS:
+                t = self.thresholds.get(c)
+                alerts[c] = next((s.step for s in steps if t is not None and getattr(s, c) > t), None)
+            out.append(EpisodeScore(
+                episode_id=eid if eid is not None else (ep[0].episode_id if ep else ""),
+                steps=tuple(steps), alert_step=alerts))
+        return out
 
 
 class LiveMonitor:

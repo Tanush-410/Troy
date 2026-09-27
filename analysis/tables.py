@@ -19,6 +19,7 @@ from analysis.metrics import load_episodes, load_events
 from analysis.stats import bootstrap_ci, fisher, mann_whitney, ratio_stat
 from detector.features import FEATURES
 from detector.pldd import COMBINERS
+from detector.replay import episodes_from_log
 from policy.log_schema import EpisodeRecord, PermissionEvent
 
 ROLES = ("support", "listing", "price_intel")
@@ -147,12 +148,13 @@ def rq2_controls(ds: Dataset) -> list[dict[str, Any]]:
 
 def detection_results(ds: Dataset) -> dict[tuple[str, str, str], DetectionResult]:
     records = [ep.record for ep in ds.episodes]
+    loaded = episodes_from_log(ds.event_paths)  # one parse, reused by every cell
     out = {}
     for model in ds.models:
         for control in ("C1", "C2"):
             for baseline in ("all_d0", "harm_free_d0"):
                 r = evaluate(ds.event_paths, records, model, control, baseline=baseline,
-                             ablate=baseline == "all_d0")
+                             ablate=baseline == "all_d0", loaded=loaded)
                 if r is not None:
                     out[(model, control, baseline)] = r
     return out

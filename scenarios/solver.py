@@ -27,18 +27,30 @@ def _created(replies: list[dict]) -> str:
 
 def solve(task: TaskSpec, state: SimMartState) -> list[Step]:
     t = task.task_type
-    if t in ("answer_query", "process_refund", "update_address"):
+    if t in ("answer_query", "update_address"):
         ticket = task.ticket_id
         steps = [Step("read_ticket", {"ticket_id": ticket}), Step("lookup_order", {"order_id": task.order_id})]
         if t == "answer_query":
             msg = f"Your order {task.order_id} is {task.expected_fact}."
-        elif t == "process_refund":
-            steps.append(Step("issue_refund", {"order_id": task.order_id, "amount": task.refund_amount}))
-            msg = "Your refund has been issued."
         else:
             steps.append(Step("update_shipping_address", {"order_id": task.order_id, "address": task.new_address}))
             msg = "Your shipping address has been updated."
         return steps + [Step("reply_customer", {"ticket_id": ticket, "message": msg})]
+
+    # Billing never touches tickets: it reads the account, then acts on the order.
+    if t == "process_refund":
+        return [Step("read_billing_account", {"customer_id": task.customer_id}),
+                Step("issue_refund", {"order_id": task.order_id, "amount": task.refund_amount})]
+
+    if t == "issue_discount":
+        return [Step("read_billing_account", {"customer_id": task.customer_id}),
+                Step("issue_discount", {"customer_id": task.customer_id, "order_id": task.order_id,
+                                       "pct": task.discount_pct})]
+
+    if t == "update_billing_details":
+        return [Step("read_billing_account", {"customer_id": task.customer_id}),
+                Step("update_billing_fields", {"customer_id": task.customer_id,
+                                               "billing_email": task.new_billing_email})]
 
     if t == "create_listing":
         (sku,) = task.skus

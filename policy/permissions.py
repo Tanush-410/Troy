@@ -12,35 +12,48 @@ from __future__ import annotations
 
 from typing import Literal
 
-Role = Literal["support", "listing", "price_intel"]
+Role = Literal["support", "listing", "price_intel", "billing"]
 TaskType = Literal[
     "answer_query",
-    "process_refund",
     "update_address",
     "create_listing",
     "reprice_listing",
     "fix_listing_content",
     "competitor_scan",
     "history_analysis",
+    "process_refund",
+    "issue_discount",
+    "update_billing_details",
 ]
 
-ROLES: tuple[Role, ...] = ("support", "listing", "price_intel")
+ROLES: tuple[Role, ...] = ("support", "listing", "price_intel", "billing")
 
 # Allowed in every role and every task, and never harmful.
 ALWAYS_ALLOWED: frozenset[str] = frozenset({"escalate_to_human"})
 
 ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
+    # Customer-facing chat. No money moves here: refunds belong to billing, so a
+    # support agent physically cannot issue one.
     "support": frozenset({
-        "read_ticket", "reply_customer", "lookup_order", "issue_refund",
+        "read_ticket", "reply_customer", "lookup_order",
         "update_shipping_address", "read_listing",
     }) | ALWAYS_ALLOWED,
+    # Catalog and pricing.
     "listing": frozenset({
         "read_listing", "create_listing", "update_listing", "upload_image",
         "set_price", "delist_product", "read_price_report",
     }) | ALWAYS_ALLOWED,
+    # Read-only on our catalog; the only role that may write a price report,
+    # which is what lets report taint cross an agent boundary.
     "price_intel": frozenset({
         "read_listing", "read_price_report", "fetch_competitor_price",
         "read_price_history", "write_price_report",
+    }) | ALWAYS_ALLOWED,
+    # Money and account-level billing fields. Deliberately NOT granted
+    # read_listing: billing never needs catalog data.
+    "billing": frozenset({
+        "read_billing_account", "issue_refund", "issue_discount",
+        "update_billing_fields",
     }) | ALWAYS_ALLOWED,
 }
 
@@ -51,24 +64,28 @@ UNGRANTED_TOOLS: frozenset[str] = frozenset({
 
 TASK_ROLE: dict[TaskType, Role] = {
     "answer_query": "support",
-    "process_refund": "support",
     "update_address": "support",
     "create_listing": "listing",
     "reprice_listing": "listing",
     "fix_listing_content": "listing",
     "competitor_scan": "price_intel",
     "history_analysis": "price_intel",
+    "process_refund": "billing",
+    "issue_discount": "billing",
+    "update_billing_details": "billing",
 }
 
 TASK_SCOPES: dict[TaskType, frozenset[str]] = {
     "answer_query": frozenset({"read_ticket", "lookup_order", "reply_customer", "read_listing"}),
-    "process_refund": frozenset({"read_ticket", "lookup_order", "issue_refund", "reply_customer"}),
     "update_address": frozenset({"read_ticket", "lookup_order", "update_shipping_address", "reply_customer"}),
     "create_listing": frozenset({"create_listing", "upload_image", "read_listing"}),
     "reprice_listing": frozenset({"read_price_report", "read_listing", "set_price"}),
     "fix_listing_content": frozenset({"read_listing", "update_listing"}),
     "competitor_scan": frozenset({"fetch_competitor_price", "read_listing", "write_price_report"}),
     "history_analysis": frozenset({"read_price_history", "write_price_report"}),
+    "process_refund": frozenset({"read_billing_account", "issue_refund"}),
+    "issue_discount": frozenset({"read_billing_account", "issue_discount"}),
+    "update_billing_details": frozenset({"read_billing_account", "update_billing_fields"}),
 }
 
 

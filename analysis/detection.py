@@ -99,21 +99,28 @@ def _evaluate(scores: dict[str, EpisodeScore], records: dict[str, EpisodeRecord]
 
 
 def evaluate(events_path: Path | Sequence[Path], episodes: Sequence[EpisodeRecord], model: str, control: str,
-             baseline: Baseline = "all_d0", window: int = 5, ablate: bool = True, seed: int = 0
+             baseline: Baseline = "all_d0", window: int = 5, ablate: bool = True, seed: int = 0,
+             n_estimators: int = 100, loaded: dict[str, list[DetectorEvent]] | None = None
              ) -> DetectionResult | None:
+    """Detection metrics for one (model, control, baseline) cell.
+
+    `loaded` lets a caller that evaluates many cells over the same logs parse the
+    JSONL once and pass the episodes in, instead of re-reading it per cell.
+    """
     recs = {r.episode_id: r for r in episodes if r.model == model and r.control_condition == control}
     d0 = [eid for eid, r in recs.items() if r.drift_condition == "D0"]
     split = split_d0(d0)
     fit_ids = split["fit"] if baseline == "all_d0" else [i for i in split["fit"]
                                                           if recs[i].total_harmful_attempted == 0]
-    eps = episodes_from_log(events_path)
+    eps = loaded if loaded is not None else episodes_from_log(events_path)
     fit_eps = [eps[i] for i in fit_ids if i in eps and eps[i]]
     calib_eps = [eps[i] for i in split["calib"] if i in eps and eps[i]]
     if not fit_eps or not calib_eps:
         return None
 
     def build(features: Sequence[str]) -> PLDD:
-        return PLDD(window=window, features=features, seed=seed).fit(fit_eps, sorted(TOOLS)).calibrate(calib_eps)
+        return PLDD(window=window, features=features, seed=seed, n_estimators=n_estimators) \
+            .fit(fit_eps, sorted(TOOLS)).calibrate(calib_eps)
 
     pldd = build(FEATURES)
     scored_ids = [i for i in recs if i not in split["fit"] and i not in split["calib"]]

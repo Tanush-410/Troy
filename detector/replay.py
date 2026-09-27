@@ -20,4 +20,7 @@ def episodes_from_log(paths: Path | Sequence[Path]) -> dict[str, list[DetectorEv
 
 
 def replay(pldd: PLDD, episodes: dict[str, list[DetectorEvent]], ids: Iterable[str]) -> dict[str, EpisodeScore]:
-    return {eid: pldd.score(episodes[eid], eid) for eid in ids if eid in episodes}
+    """Score every requested episode in one batch (one IsolationForest call)."""
+    wanted = [eid for eid in ids if eid in episodes]
+    scored = pldd.score_many([episodes[eid] for eid in wanted], wanted)
+    return dict(zip(wanted, scored, strict=True))

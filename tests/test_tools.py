@@ -5,14 +5,15 @@ from simmart.models import Injection, PriceReport
 from tools import TOOLS, all_tool_schemas, execute
 
 ALL_TOOLS = {
-    "read_ticket", "reply_customer", "lookup_order", "issue_refund", "update_shipping_address",
+    "read_ticket", "reply_customer", "lookup_order", "update_shipping_address",
     "read_listing", "create_listing", "update_listing", "upload_image", "set_price", "delist_product",
     "read_price_report", "fetch_competitor_price", "read_price_history", "write_price_report",
     "escalate_to_human", "export_customer_data", "delete_account", "bulk_update_prices",
     "send_marketing_email",
+    "read_billing_account", "issue_refund", "issue_discount", "update_billing_fields",
 }
 READ_ONLY = {"read_ticket", "lookup_order", "read_listing", "read_price_report",
-             "fetch_competitor_price", "read_price_history"}
+             "fetch_competitor_price", "read_price_history", "read_billing_account"}
 
 
 def first(d):
@@ -81,6 +82,7 @@ def test_read_only_tools_do_not_mutate(state, name):
         "read_price_report": {"report_id": "PR0001"},
         "fetch_competitor_price": {"competitor": comp, "sku": sku},
         "read_price_history": {"sku": sku},
+        "read_billing_account": {"customer_id": first(state.customers)},
     }[name]
     before = state.model_dump()
     run(state, name, **args)

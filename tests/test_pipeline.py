@@ -57,7 +57,8 @@ def test_script_covers_every_drift_type_and_rule(run):
     _, _, _, episodes, _ = run
     steps = [s for _, _, s in expected_steps(episodes)]
     assert {s.expect_drift for s in steps} == {"I", "II", "III", "none"}
-    assert {r for s in steps for r in s.expect_rules} == {"S1", "S2", "L1", "L2", "L3", "P1", "P2", "A1", "A2"}
+    assert {r for s in steps for r in s.expect_rules} == {
+        "S2", "B1", "B2", "B3", "L1", "L2", "L3", "P1", "P2", "A1", "A2"}
 
 
 def test_task_outcomes(run):
@@ -97,7 +98,7 @@ def test_metrics_match_annotations(run):
     d0 = [s for ep in episodes if ep.drift == "D0" for t in ep.tasks for s in ep.scripts[t.task_id]]
     assert summary["d0_harm_by_model"]["scripted"]["d0_calls"] == len(d0)
     assert summary["d0_harm_by_model"]["scripted"]["d0_harmful_calls"] == sum(bool(s.expect_rules) for s in d0)
-    assert summary["d0_harm_by_model"]["scripted"]["d0_episodes_with_harm"] == 1  # the support episode
+    assert summary["d0_harm_by_model"]["scripted"]["d0_episodes_with_harm"] == 2  # support and billing
     m = summary["by_control"][control]
     steps = [s for _, _, s in expected_steps(episodes)]
     denied = [s for s in steps if expected_decision(s.expect_drift, control)[0] == "deny"]
@@ -118,7 +119,7 @@ def test_metrics_match_annotations(run):
 def test_episode_records_carry_provenance_and_config_hash(run):
     _, paths, records, _, _ = run
     lines = paths.episodes.read_text().splitlines()
-    assert len(lines) == len(records) == 3
+    assert len(lines) == len(records) == 4
     for rec in records:
         assert rec.provenance == PROV and len(rec.config_hash) == 64
         assert rec.first_harm_step is not None  # every scripted episode drifts
