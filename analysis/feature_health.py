@@ -6,6 +6,10 @@ over every scored window, and reports per feature:
   - distinct values, standard deviation, share of windows where it is non-zero
   - NaN or infinite values (broken)
   - AUROC of the feature alone, using each episode's maximum (harmful episode = positive)
+  - whether it is effectively used: by the weighted sum (its positive z-score is non-zero in
+    at least one scored window) and by IsolationForest (at least one tree splits on it).
+    A feature constant in the baseline gets z = 0 while it stays constant, so it adds nothing
+    to the weighted sum, and IsolationForest can never split on it.
 A feature is flagged "constant" if it never varies, "near-constant" if it is
 non-zero in under 1% of windows, and "broken" if any value is NaN or infinite.
 """
@@ -19,7 +23,8 @@ from sklearn.metrics import roc_auc_score
 
 from analysis.detection import split_d0
 from analysis.tables import Dataset
-from detector.features import FEATURES, fit_baseline, raw_features, windows
+from detector.features import FEATURES, raw_features, standardize, windows
+from detector.pldd import PLDD
 from detector.replay import episodes_from_log
 from tools import TOOLS
 
@@ -36,15 +41,20 @@ def feature_health(ds: Dataset, window: int = 5) -> list[dict[str, Any]]:
             fit = [eps_by_id[i] for i in split["fit"] if eps_by_id.get(i)]
             if not fit:
                 continue
-            baseline = fit_baseline(fit, window, sorted(TOOLS))
+            pldd = PLDD(window=window).fit(fit, sorted(TOOLS))  # same settings as the RQ3 evaluation
+            baseline = pldd.baseline
+            iforest_used = pldd.iforest_features_used()
             scored = [i for i in recs if i not in split["fit"] and i not in split["calib"] and eps_by_id.get(i)]
             values: list[list[float]] = [[] for _ in FEATURES]
+            contributes: list[int] = [0 for _ in FEATURES]
             ep_max: dict[str, list[float]] = {}
             for eid in scored:
                 per_window = [raw_features(w, baseline) for w in windows(eps_by_id[eid], window)]
                 for w in per_window:
+                    z = standardize(w, baseline)
                     for k, v in enumerate(w):
                         values[k].append(v)
+                        contributes[k] += z[k] > 0
                 ep_max[eid] = [max(w[k] for w in per_window) for k in range(len(FEATURES))]
             labels = [int(recs[i].total_harmful_attempted > 0) for i in ep_max]
             for k, name in enumerate(FEATURES):
@@ -62,5 +72,7 @@ def feature_health(ds: Dataset, window: int = 5) -> list[dict[str, Any]]:
                           else "near-constant" if nonzero < NEAR_CONSTANT else "ok")
                 rows.append({"model": model, "control": control, "feature": name, "windows": len(vs),
                              "distinct_values": distinct, "std": std, "nonzero_share": nonzero,
-                             "non_finite": len(vs) - len(finite), "auroc_alone": auroc, "status": status})
+                             "non_finite": len(vs) - len(finite), "auroc_alone": auroc, "status": status,
+                             "weighted_contributing_share": contributes[k] / len(vs) if vs else 0.0,
+                             "used_by_weighted": contributes[k] > 0, "used_by_iforest": name in iforest_used})
     return rows

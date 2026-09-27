@@ -122,7 +122,18 @@ def feature_health_md(rows: list[dict[str, Any]]) -> str:
     lines = ["", "## Detector feature health", ""]
     if not rows:
         return "\n".join(lines + ["n/a (no D0 fit episodes)", ""])
-    lines += [f"{len(rows)} feature checks ({len({r['feature'] for r in rows})} features x model x control). "
+    lines += ["Effective features (a feature constant in the clean baseline adds nothing while it stays constant, "
+              "and IsolationForest never splits on it). C3 is replayed from C1 logs, C4 from C2 logs:", "",
+              "| Model | Detector | Weighted sum uses | IsolationForest uses | Unused by both |",
+              "|---|---|---|---|---|"]
+    for (model, control) in sorted({(r["model"], r["control"]) for r in rows}):
+        rs = [r for r in rows if r["model"] == model and r["control"] == control]
+        w = [r["feature"] for r in rs if r["used_by_weighted"]]
+        f = [r["feature"] for r in rs if r["used_by_iforest"]]
+        unused = [r["feature"] for r in rs if not r["used_by_weighted"] and not r["used_by_iforest"]]
+        lines.append(f"| {model} | {'C3' if control == 'C1' else 'C4'} | {len(w)} of {len(rs)} | {len(f)} of {len(rs)} | "
+                     f"{', '.join(unused) or 'none'} |")
+    lines += ["", f"{len(rows)} feature checks ({len({r['feature'] for r in rows})} features x model x control). "
               + (f"{len(flagged)} flagged:" if flagged else "No feature is constant, near-constant or broken."), ""]
     for r in flagged:
         lines.append(f"- {r['model']} {r['control']} `{r['feature']}`: {r['status']} "

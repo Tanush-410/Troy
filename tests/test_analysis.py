@@ -145,3 +145,12 @@ def test_feature_health_flags_and_reports_every_feature(results):
     c1_exp = next(r for r in rows if r["control"] == "C1" and r["feature"] == "expansion_rate")
     assert c1_exp["status"] == "constant"
     assert "Detector feature health" in (out / "summary.md").read_text()
+
+
+def test_effective_features_reported_per_detector(results):
+    _, _, out, _ = results
+    rows = read(out, "detector_feature_health")
+    c1_exp = next(r for r in rows if r["control"] == "C1" and r["feature"] == "expansion_rate")
+    assert c1_exp["used_by_weighted"] == "False" and c1_exp["used_by_iforest"] == "False"
+    text = (out / "summary.md").read_text()
+    assert "Effective features" in text and "| scripted | C3 |" in text and "| scripted | C4 |" in text

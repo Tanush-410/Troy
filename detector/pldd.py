@@ -79,6 +79,18 @@ class PLDD:
             self.thresholds[c] = float(np.quantile(maxima, 1 - fpr, method="higher"))
         return self
 
+    def iforest_features_used(self) -> set[str]:
+        """Features the IsolationForest actually splits on.
+
+        A feature that is constant in the baseline windows can never be split on,
+        so IsolationForest ignores it entirely, even if it varies when scored.
+        """
+        assert self._forest is not None, "fit first"
+        used: set[str] = set()
+        for tree, cols in zip(self._forest.estimators_, self._forest.estimators_features_, strict=True):
+            used.update(self.features[cols[i]] for i in tree.tree_.feature if i >= 0)
+        return used
+
     # --------------------------------------------------------------- score
 
     def _z(self, win: Sequence[DetectorEvent]) -> list[float]:

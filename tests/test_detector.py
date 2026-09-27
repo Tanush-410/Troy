@@ -156,3 +156,55 @@ def test_live_pause_mode(tmp_path, state):
     after = [e for e in events if e["step"] > rec.pldd_alert_step]
     assert after and all(e["decision"] == "deny" and e["deny_layer"] == "pldd" for e in after)
     assert rec.task_ends["t1"] == "paused" and rec.task_ends["t2"] == "paused"
+
+
+# ------------------------------------------------ zero-variance features (e.g. expansion rate under C1)
+
+def _no_expansion_baseline():
+    """Clean C1-like episodes: calls vary, but no call is ever denied or needs a scope expansion."""
+    import random
+    rng = random.Random(1)
+    return [[ev(i, rng.choice(["read_ticket", "lookup_order", "reply_customer"]), ep=f"z{k}")
+             for i in range(1, 7)] for k in range(40)]
+
+
+def test_constant_baseline_feature_is_finite_and_contributes_zero_when_it_stays_constant():
+    import math
+
+    eps = _no_expansion_baseline()
+    pldd = PLDD(window=3).fit(eps[:20], sorted(TOOLS)).calibrate(eps[20:])
+    exp_i, deny_i = FEATURES.index("expansion_rate"), FEATURES.index("deny_rate")
+    b = pldd.baseline
+    # the std floor keeps the constant features' spread positive: no division by zero
+    assert b.feat_mean[exp_i] == 0.0 and b.feat_std[exp_i] > 0
+    assert b.feat_mean[deny_i] == 0.0 and b.feat_std[deny_i] > 0
+    for ep in eps[20:]:
+        score = pldd.score(ep)
+        for st in score.steps:
+            assert all(math.isfinite(v) for v in (*st.raw, *st.z, st.weighted, st.iforest, st.drift_jsd))
+            assert st.z[exp_i] == 0.0  # weighted contribution max(0, z) * w is exactly 0
+    # IsolationForest cannot split on a feature that never varies in the baseline
+    assert "expansion_rate" not in pldd.iforest_features_used()
+    assert "deny_rate" not in pldd.iforest_features_used()
+
+
+def test_weighted_contribution_of_a_baseline_constant_feature_is_exactly_zero():
+    """Removing the constant feature leaves the weighted score unchanged, window by window."""
+    eps = _no_expansion_baseline()
+    full = PLDD(window=3).fit(eps[:20], sorted(TOOLS)).calibrate(eps[20:])
+    without = PLDD(window=3, features=[f for f in FEATURES if f != "expansion_rate"]) \
+        .fit(eps[:20], sorted(TOOLS)).calibrate(eps[20:])
+    for ep in eps[20:]:
+        a, b = full.score(ep), without.score(ep)
+        assert [s.weighted for s in a.steps] == pytest.approx([s.weighted for s in b.steps])
+
+
+def test_baseline_constant_feature_still_signals_in_weighted_sum_when_it_moves():
+    """Intended: deny rate is constant (0) in a clean baseline, but a denial under drift is the Type I
+    signal, so the weighted sum counts it. IsolationForest ignores it (it never saw it vary)."""
+    eps = _no_expansion_baseline()
+    pldd = PLDD(window=3).fit(eps[:20], sorted(TOOLS)).calibrate(eps[20:])
+    drifted = [ev(1, "read_ticket", ep="d"), ev(2, "delete_account", "deny", ep="d"),
+               ev(3, "export_customer_data", "deny", ep="d")]
+    last = pldd.score(drifted).steps[-1]
+    assert last.z[FEATURES.index("deny_rate")] > 0 and last.weighted > 0

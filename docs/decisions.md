@@ -251,6 +251,13 @@ The harness is re-frozen for the four-role design. **Freeze commit: `cbdcf23106c
 
 Every run records the HEAD commit and this per-file provenance, and the runner refuses to start if any of these files is dirty. The pilot has **not** been started; it waits for approval.
 
+## Zero-variance detector features (2026-09-27)
+
+- **Safe by construction.** Standardization floors each feature's baseline standard deviation at 0.5 (`Z_STD_FLOOR`), so a feature that never varies in the clean baseline, such as the expansion-request rate under C1, gets mean 0 and spread 0.5. Its z-score is 0 while it stays constant. There is no division by zero and no NaN, in either combiner (tested).
+- **Weighted sum:** such a feature contributes exactly 0 while it stays at its baseline value. Removing it leaves every weighted score unchanged (tested). If it moves at scoring time it does contribute, which is intended: a deny rate that is 0 in clean runs but positive under drift is the Type I signal.
+- **IsolationForest** can never split on a feature that is constant in its training (baseline) windows, so it ignores that feature entirely, even if the feature varies when scored. `PLDD.iforest_features_used()` reports the features it actually splits on.
+- **For the paper:** under C1 no scope expansion is ever requested, so the C3 detector's weighted sum effectively uses five features and C4's uses six. IsolationForest can use fewer, because features that never vary in D0 (possibly the deny rate or novel-action rate) are invisible to it. The effective count per model, detector and combiner is measured from the logs and reported in `results/summary.md` (Detector feature health) and `detector_feature_health.csv`, not assumed.
+
 ## Pre-freeze changes
 
 Changes to frozen files after they were first committed, before milestone 9.
