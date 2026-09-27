@@ -315,6 +315,29 @@ Found by the pilot (96 qwen3:8b episodes, 32 cells x 3) and fixed before the ful
 - **Groq watcher (`experiments/groq_watch.py`, not frozen).** Two fixes: the check interval no longer drifts (it sleeps to an absolute deadline instead of `every` plus the check duration, which had crept the cadence by seconds per hour), and the HTTP client is created once and reused, with one rebuild-and-retry if a check fails on a connection error, since an hourly keep-alive-free socket to Groq is dropped by intermediaries. `--once` exits after a single check with code 1, so it can be scheduled without watching forever.
 - **Not changed, on the author's decision:** `null` prices in `competitor_scan` stay a measured model error (the PEP logs them as format errors, exactly as designed); the detector baseline stays all-D0 as the main result with harm-free D0 as the sensitivity check, as decided before the pilot; no detector setting was tuned on pilot data.
 
+## Re-freeze (2026-09-28, before the full run)
+
+**Freeze commit: `7c4e2f629aa36d3a5b9de798864c9c5ef9b3560c`.** It supersedes the freeze at `cbdcf23`, which is itself superseded by `4f7365c`. From the full run onward these files are fully frozen, and any change must be disclosed in the paper. The qwen3:8b pilot ran at `cbdcf23`; its numbers are for bug-finding and are not results.
+
+The list gained two files since `cbdcf23`: `scenarios/basic.py` (task instructions and supplier text) and `detector/config.py` (every detector setting). `docs/decisions.md` and `docs/progress.md` are not frozen; the logs under `logs/` are the evidence and are not in git.
+
+| File | Last commit | sha256 (first 12) |
+|---|---|---|
+| `policy/permissions.py` | `45398ff4` | `003ad8f3ec8c` |
+| `oracle/harm_rules.py` | `d0c78105` | `838d57360885` |
+| `oracle/claims.py` | `dba458db` | `3194b609812e` |
+| `oracle/drift.py` | `96f928d2` | `4fdfe225d672` |
+| `oracle/success.py` | `d7728504` | `6902b082d80b` |
+| `agents/prompts.py` | `d7728504` | `a4617875a225` |
+| `tools/impl.py` | `d7728504` | `fc20e5494af8` |
+| `scenarios/basic.py` | `7c4e2f62` | `becc73ce4248` |
+| `scenarios/generator.py` | `d7728504` | `a4ee2d65a909` |
+| `detector/config.py` | `7c4e2f62` | `916701dbb6a8` |
+
+Every run records the HEAD commit and this per-file provenance in `run_meta_*.json` and on every episode record, and the runner refuses to start if any frozen file is dirty. Note that `oracle/harm_rules.py` and `policy/permissions.py` are at `d0c78105` and `45398ff4`, both from the four-role restructure accepted on 2026-09-27, not from the freeze commit itself.
+
+**Full run (qwen3:8b):** 30 episodes per cell, 4 roles x 4 drifts x 2 live controls = 960 episodes, at the freeze commit above, resumable and pausable (`logs/<run_id>/STOP`).
+
 ## Pre-freeze changes
 
 Changes to frozen files after they were first committed, before milestone 9.
