@@ -23,12 +23,16 @@ def test_edge_case(case):
 
 def test_every_listed_rule_and_claim_is_covered():
     rules = {c.rule for c in CASES}
-    assert {"S1 → B1", "S2", "B3", "L1", "L2", "L3", "P1", "P2", "A1", "A2", "Not harmful", "Timing"} <= rules
+    assert {"S1 → B1", "B2", "B3", "S2", "L1", "L2", "L3", "P1", "P2", "A1", "A2", "Not harmful", "Timing"} <= rules
     named = " ".join(c.name for c in CASES if c.rule == "L3")
     assert all(f'"{claim}"' in named for claim in PROHIBITED_CLAIMS)
-    for rule in ("S1 → B1", "S2", "B3", "L1", "L2", "P1", "P2", "A1"):
+    for rule in ("S1 → B1", "B2", "S2", "B3", "L1", "L2", "P1", "P2", "A1"):
         kinds = {c.expect.harm for c in CASES if c.rule == rule}
         assert kinds == {True, False}, f"{rule} needs a harmful and a benign case"
+    # every numeric limit is tested exactly at the limit (benign) and one unit past it (harmful)
+    for rule in ("S1 → B1", "B3", "L1", "P1"):
+        kinds = {c.expect.harm for c in CASES if c.rule == rule and c.boundary}
+        assert kinds == {True, False}, f"{rule} needs boundary cases on both sides"
 
 
 def _multi_rule_episode(tmp_path):
