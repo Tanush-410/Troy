@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from analysis.feature_health import feature_health
 from analysis.figures import dt_timelines, harm_bars, roc_curves
 from analysis import stats
 from analysis.stats import fmt_ci
@@ -100,6 +101,12 @@ def summary_md(ds: Dataset, tables: dict[str, list[dict[str, Any]]], run_dirs: l
                          f"{fmt_ci(f['format_error_rate'], f['lo'], f['hi']) if f else 'n/a'} | "
                          f"{_pct(c['context_overflow_rate']) if c else 'n/a'} | "
                          f"{_pct(c['escalation_rate']) if c else 'n/a'} | {c['api_retries'] if c else 'n/a'} |")
+        rbw = [r for r in tables["read_before_write"] if r["model"] == model and r["control"] == "all"]
+        if rbw:
+            lines += ["", "Read before write (support and billing tasks with a state change; share where the agent "
+                      "first read the ticket, order or account in that task): " + "; ".join(
+                          f"{r['agent']} {fmt_ci(r['read_first_share'], r['lo'], r['hi'])} "
+                          f"({r['tasks_read_first']}/{r['tasks_with_write']} tasks)" for r in rbw)]
         xa = [r for r in tables["cross_agent_taint"] if r["model"] == model]
         if xa:
             lines += ["", "Cross-agent taint (listing agent): " + "; ".join(
@@ -110,17 +117,32 @@ def summary_md(ds: Dataset, tables: dict[str, list[dict[str, Any]]], run_dirs: l
     return "\n".join(lines)
 
 
+def feature_health_md(rows: list[dict[str, Any]]) -> str:
+    flagged = [r for r in rows if r["status"] != "ok"]
+    lines = ["", "## Detector feature health", ""]
+    if not rows:
+        return "\n".join(lines + ["n/a (no D0 fit episodes)", ""])
+    lines += [f"{len(rows)} feature checks ({len({r['feature'] for r in rows})} features x model x control). "
+              + (f"{len(flagged)} flagged:" if flagged else "No feature is constant, near-constant or broken."), ""]
+    for r in flagged:
+        lines.append(f"- {r['model']} {r['control']} `{r['feature']}`: {r['status']} "
+                     f"({r['distinct_values']} distinct values, non-zero in {100 * r['nonzero_share']:.1f}% of "
+                     f"{r['windows']} windows, {r['non_finite']} non-finite)")
+    return "\n".join(lines + ["", "Details: `detector_feature_health.csv` (includes each feature's AUROC alone).", ""])
+
+
 def run(run_dirs: list[Path], out: Path) -> dict[str, Any]:
     out.mkdir(parents=True, exist_ok=True)
     ds = Dataset.load(run_dirs)
     tables, det = all_tables(ds)
     files = []
+    tables["detector_feature_health"] = feature_health(ds)
     for name, rows in tables.items():
         write_csv(rows, out / f"{name}.csv")
         files.append(f"{name}.csv")
     figs = roc_curves(ds, det, out) + harm_bars(tables["rq2_controls"], out) + dt_timelines(ds, det, out)
     files += [p.name for p in figs]
-    (out / "summary.md").write_text(summary_md(ds, tables, run_dirs))
+    (out / "summary.md").write_text(summary_md(ds, tables, run_dirs) + feature_health_md(tables["detector_feature_health"]))
     index = {"run_dirs": [str(d) for d in run_dirs], "episodes": len(ds.episodes), "files": files + ["summary.md"]}
     (out / "index.json").write_text(json.dumps(index, indent=2))
     return index

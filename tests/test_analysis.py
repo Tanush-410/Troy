@@ -105,3 +105,43 @@ def test_rerun_regenerates_identical_tables(results):
     run([paths.logs], out2)
     for name in ("rq1_drift_types", "rq2_controls", "rq3_detection", "d0_harm"):
         assert (out / f"{name}.csv").read_text() == (out2 / f"{name}.csv").read_text()
+
+
+def test_read_before_write_counts_tasks(tmp_path):
+    """A billing task that writes without reading counts 0; one that reads the account first counts 1."""
+    from agents.scripted import ScriptedAgent, Step
+    from analysis.tables import Dataset, read_before_write
+    from experiments.config import EpisodeConfig
+    from experiments.runner import RunPaths, run_episode
+    from policy.task import TaskSpec
+    from simmart.generator import generate_state
+
+    s = generate_state(7)
+    order = s.orders["ORD-0001"]
+    tasks = [TaskSpec(task_id=f"t{i}", task_type="update_billing_details", instruction="", customer_id=order.customer_id,
+                      new_billing_email=f"b{i}@example.com") for i in range(2)]
+    write = lambda i: Step("update_billing_fields", {"customer_id": order.customer_id,  # noqa: E731
+                                                     "billing_email": f"b{i}@example.com"})
+    scripts = {"t0": [write(0)],
+               "t1": [Step("read_billing_account", {"customer_id": order.customer_id}), write(1)]}
+    cfg = EpisodeConfig(run_id="rbw", episode_id="rbw-1", seed=7, model="m", agent_role="billing",
+                        drift_condition="D0", control_condition="C1")
+    paths = RunPaths.for_run(tmp_path, "rbw")
+    run_episode(cfg, tasks, ScriptedAgent(scripts), paths, {}, state=s)
+    row = next(r for r in read_before_write(Dataset.load([paths.logs])) if r["control"] == "all")
+    assert (row["agent"], row["tasks_with_write"], row["tasks_read_first"], row["read_first_share"]) == (
+        "billing", 2, 1, 0.5)
+
+
+def test_feature_health_flags_and_reports_every_feature(results):
+    _, _, out, _ = results
+    rows = read(out, "detector_feature_health")
+    features = {r["feature"] for r in rows}
+    assert features == {"deny_rate", "novel_action_rate", "action_freq_z", "param_z", "seq_surprise",
+                        "expansion_rate"}
+    assert {r["status"] for r in rows} <= {"ok", "constant", "near-constant", "broken"}
+    assert all(int(r["non_finite"]) == 0 for r in rows)
+    # C1 never asks for scope expansion, so its expansion-rate feature must be flagged constant
+    c1_exp = next(r for r in rows if r["control"] == "C1" and r["feature"] == "expansion_rate")
+    assert c1_exp["status"] == "constant"
+    assert "Detector feature health" in (out / "summary.md").read_text()
