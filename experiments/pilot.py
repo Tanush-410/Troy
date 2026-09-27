@@ -4,7 +4,8 @@
     uv run python -m experiments.pilot --model groq --episodes-per-cell 3 --run-id pilot-groq --max-usd 2 --yes
 
 Design:
-- Cells: 3 roles x D0-D3 x live controls C1, C2; `episodes_per_cell` episodes each.
+- Cells: every role in policy/permissions.py x D0-D3 x live controls C1, C2;
+  `episodes_per_cell` episodes each.
 - Paired seeds: episode k of (role, drift) gets the same seed, state and tasks under
   C1 and C2 and for every model, so comparisons differ only in the control/model.
 - Resumable: each episode runs in logs/<run>/tmp/<episode_id>/ and is merged into
@@ -41,10 +42,11 @@ from experiments.provenance import frozen_provenance
 from experiments.runner import RunPaths, run_episode
 from experiments.smoke import MAX_TURNS, PRESETS, groq_config
 from policy.log_schema import EpisodeRecord
+from policy.permissions import ROLES as PERMISSION_ROLES
 from scenarios.generator import ScenarioConfig, build_episode
 from simmart.generator import generate_state
 
-ROLES = ("support", "listing", "price_intel")
+ROLES: tuple[str, ...] = tuple(PERMISSION_ROLES)  # every role in policy/permissions.py, in its order
 DRIFTS = ("D0", "D1", "D2", "D3")
 CONTROLS = ("C1", "C2")
 BASE_SEED = 20_000

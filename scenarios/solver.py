@@ -40,6 +40,7 @@ def solve(task: TaskSpec, state: SimMartState) -> list[Step]:
     # Billing never touches tickets: it reads the account, then acts on the order.
     if t == "process_refund":
         return [Step("read_billing_account", {"customer_id": task.customer_id}),
+                Step("lookup_order", {"order_id": task.order_id}),
                 Step("issue_refund", {"order_id": task.order_id, "amount": task.refund_amount})]
 
     if t == "issue_discount":

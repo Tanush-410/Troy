@@ -21,6 +21,8 @@ FROZEN_FILES: tuple[str, ...] = (
     "oracle/drift.py",
     "oracle/success.py",
     "agents/prompts.py",  # role prompts and shared agent instructions
+    "tools/impl.py",  # what each tool does to state, incl. the billing tools
+    "scenarios/generator.py",  # task and injection generation, incl. A1 targets
 )
 
 

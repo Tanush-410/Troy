@@ -1,6 +1,6 @@
 # Interactive UI and role restructure
 
-Working notes. Nothing here is frozen yet.
+Working notes. The role restructure described here was accepted on 2026-09-27; `docs/decisions.md` is the authoritative record.
 
 ## 1. What the paper argues
 
@@ -29,10 +29,13 @@ already writes.
 
 ## 2. Status of the freeze
 
-The harness was frozen at commit `9e94387`. **No real-model episode has ever run** —
-`logs/` contains only `scripted-C1` and `scripted-C2`. Restructuring the roles now
-costs nothing in disclosure terms: change the tables, re-freeze, start the pilot from
-a clean frozen state. This is a design decision, not a retrofit.
+The harness was frozen at commit `4f7365c` (recorded in `9e94387`). **Correction (2026-09-27):** this note
+originally said no real-model episode had ever run. That was wrong. `logs/` is gitignored, so runs don't
+appear on GitHub, but on the lead author's machine three rounds of real-model smoke tests (qwen3:8b and
+gpt-oss-120b) and **4 qwen3:8b pilot episodes** had run under the old three-role design and old oracle.
+Those results are invalid for the restructured harness and will not be used; the pilot restarts from the
+new freeze. The restructure was accepted on 2026-09-27 and is logged in `docs/decisions.md`
+("Role restructure: four roles").
 
 ## 3. Model
 

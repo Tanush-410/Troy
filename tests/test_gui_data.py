@@ -19,9 +19,13 @@ from experiments.scripted_dataset import generate
 from gui import data
 from gui.data import CLEAN, HARMFUL, DashboardData, OverviewCard
 from gui.filters import EpisodeFilters, GlobalFilters
+from policy.permissions import ROLES as PERMISSION_ROLES
 
 MODEL = "scripted"
-ROLES = ("support", "listing", "price_intel", "all")
+AGENTS: tuple[str, ...] = tuple(PERMISSION_ROLES)  # every role, in policy/permissions.py order
+ROLES = (*AGENTS, "all")
+PER_CELL = 6  # episodes per cell in the scripted fixture below
+N_DRIFTS = 4
 
 
 def read(out: Path, name: str) -> list[dict[str, str]]:
@@ -62,7 +66,7 @@ def scripted(tmp_path_factory):
     saved, stats.N_BOOT = stats.N_BOOT, 200  # keep the test fast; the real pipeline uses 2000
     try:
         root = tmp_path_factory.mktemp("gui_data")
-        paths, records = generate(root, "ds", 6)
+        paths, records = generate(root, "ds", PER_CELL)
         out = root / "results"
         index = run([paths.logs], out)
         yield SimpleNamespace(root=root, paths=paths, records=records, out=out, index=index)
@@ -244,7 +248,7 @@ def test_overview_cards_survive_an_empty_slice(dashboard):
 def test_agent_drift_breakdown_counts_the_log(dashboard, scripted):
     events = [json.loads(line) for line in scripted.paths.events.read_text().splitlines() if line.strip()]
     breakdown = data.agent_drift_breakdown(dashboard.dataset, MODEL, control="C1")
-    assert sorted(breakdown) == ["listing", "price_intel", "support"]
+    assert sorted(breakdown) == sorted(AGENTS)
     logged = [e for e in events if e["control_condition"] == "C1" and not e["format_error"]]
     for role, rows in breakdown.items():
         assert set(rows) == set(DRIFT_TYPES)
@@ -268,12 +272,12 @@ def test_harmful_rate_by_drift_matches_rq2(dashboard, scripted):
     assert pooled.c2.rate == cell(rates, "harm_attempted_rate_c2")
     for row in rows:
         for side in (row.c1, row.c2):
-            assert side.episodes in (0, 6, 18, 72)
+            assert side.episodes in (0, PER_CELL, PER_CELL * len(AGENTS), PER_CELL * len(AGENTS) * N_DRIFTS)
             assert side.calls >= side.episodes
             assert side.rate is None or side.lo - 1e-12 <= side.rate <= side.hi + 1e-12
-    assert rows[0].c1.episodes == rows[0].c2.episodes == 18
-    assert sum(r.c1.episodes for r in rows[:-1]) == 72
-    assert data.harmful_rate_by_drift(dashboard.dataset, MODEL, agent="support")[0].c1.episodes == 6
+    assert rows[0].c1.episodes == rows[0].c2.episodes == PER_CELL * len(AGENTS)
+    assert sum(r.c1.episodes for r in rows[:-1]) == PER_CELL * len(AGENTS) * N_DRIFTS
+    assert data.harmful_rate_by_drift(dashboard.dataset, MODEL, agent="support")[0].c1.episodes == PER_CELL
 
 
 def test_harm_blocked_by_drift_type_matches_rq1(dashboard, scripted):
@@ -293,9 +297,10 @@ def test_harm_blocked_by_drift_type_matches_rq1(dashboard, scripted):
                 continue
             assert share.blocked_share == (share.harmful_blocked / share.harmful_attempted
                                            if share.harmful_attempted else None)
-        breakdown = data.agent_drift_breakdown(dashboard.dataset, MODEL, control=control)["support"]
-        assert by_type["I"].calls == breakdown["I"]["calls"]
-        assert by_type["I"].harmful_blocked <= breakdown["I"]["denied"]
+        # The pooled Type I row sums every agent's Type I calls (billing makes some too).
+        per_agent = data.agent_drift_breakdown(dashboard.dataset, MODEL, control=control)
+        assert by_type["I"].calls == sum(b["I"]["calls"] for b in per_agent.values())
+        assert by_type["I"].harmful_blocked <= sum(b["I"]["denied"] for b in per_agent.values())
     assert data.harm_blocked_by_drift_type(dashboard.dataset, "no-such-model")[0].blocked_share is None
 
 
@@ -387,8 +392,8 @@ def test_episode_filters_narrow_the_rows_only(dashboard):
     assert harmful and all(r.harmful for r in harmful)
     assert EpisodeFilters(harm=CLEAN).rows(rows) == [r for r in rows if not r.harmful]
     assert EpisodeFilters(min_harm=1).rows(rows) == harmful
-    assert len(EpisodeFilters(model=MODEL, control="C1").rows(rows)) == 72
-    assert len(EpisodeFilters(agent="listing", drift="D3").rows(rows)) == 12
+    assert len(EpisodeFilters(model=MODEL, control="C1").rows(rows)) == PER_CELL * len(AGENTS) * N_DRIFTS
+    assert len(EpisodeFilters(agent="listing", drift="D3").rows(rows)) == PER_CELL * 2  # C1 and C2
     assert EpisodeFilters(control="C9").rows(rows) == []
     assert EpisodeFilters(outcome="escalated").rows(rows) == [r for r in rows if "escalated" in r.outcomes]
     assert EpisodeFilters(harm=HARMFUL, min_harm=99).rows(rows) == []
@@ -406,7 +411,7 @@ def test_episode_filters_narrow_the_rows_only(dashboard):
 def test_filter_options_offer_every_choice(dashboard):
     options = data.filter_options(dashboard.dataset)
     assert options["models"] == ["all", MODEL]
-    assert options["agents"] == ["all", "support", "listing", "price_intel"]
+    assert options["agents"] == ["all", *AGENTS]
     assert options["drifts"] == ["all", "D0", "D1", "D2", "D3"]
     assert options["controls"] == ["all", "C1", "C2", "C3", "C4"]
     assert EpisodeFilters(agent="support").active() == {"agent": "support"}

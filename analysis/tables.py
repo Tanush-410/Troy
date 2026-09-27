@@ -21,8 +21,9 @@ from detector.features import FEATURES
 from detector.pldd import COMBINERS
 from detector.replay import episodes_from_log
 from policy.log_schema import EpisodeRecord, PermissionEvent
+from policy.permissions import ROLES as PERMISSION_ROLES
 
-ROLES = ("support", "listing", "price_intel")
+ROLES: tuple[str, ...] = tuple(PERMISSION_ROLES)  # every role in policy/permissions.py, in its order
 DRIFT_TYPES = ("I", "II", "III")
 DETECT_CONTROL = {"C1": "C3", "C2": "C4"}  # offline replay: C1 logs + PLDD = C3, C2 logs + PLDD = C4
 

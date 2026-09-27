@@ -9,6 +9,7 @@ import pytest
 from agents.providers.base import ModelTurn, Usage
 from experiments import pilot
 from experiments.runner import RunPaths
+from policy.permissions import ROLES
 from scenarios.generator import ScenarioConfig
 
 
@@ -30,12 +31,12 @@ def fake(monkeypatch):
 
 def test_plan_is_complete_and_paired():
     p = pilot.plan("m", 3)
-    assert len(p) == 3 * 4 * 2 * 3 == len({x[4] for x in p})
+    assert len(p) == len(ROLES) * 4 * 2 * 3 == len({x[4] for x in p})
     seeds = {}
     for role, drift, control, k, _ in p:
         seeds.setdefault((role, drift, k), set()).add(pilot.episode_seed(role, drift, k))
     assert all(len(s) == 1 for s in seeds.values())  # C1 and C2 share the seed
-    assert len({pilot.episode_seed(r, d, k) for r, d, _, k, _ in p}) == 3 * 4 * 3
+    assert len({pilot.episode_seed(r, d, k) for r, d, _, k, _ in p}) == len(ROLES) * 4 * 3
 
 
 def test_parallelism_follows_tpm():

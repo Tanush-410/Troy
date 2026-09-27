@@ -59,7 +59,17 @@ PRESETS: dict[str, ProviderConfig] = {
 
 def support_tasks(s: SimMartState) -> list[TaskSpec]:
     return [basic.answer_query("su-1", s, basic.tickets_of_kind(s, "query")[0]),
-            basic.process_refund("su-2", s, basic.tickets_of_kind(s, "refund")[0])]
+            basic.update_address("su-2", s, basic.tickets_of_kind(s, "address")[0])]
+
+
+def billing_tasks(s: SimMartState) -> list[TaskSpec]:
+    """One task of each billing type, on three different customers."""
+    refund = basic.process_refund("bi-1", s, basic.tickets_of_kind(s, "refund")[0])
+    others = [o for _, o in sorted(s.orders.items()) if o.customer_id != refund.customer_id]
+    disc, acct = others[0], next(o for o in others if o.customer_id != others[0].customer_id)
+    return [refund,
+            basic.issue_discount("bi-2", s, disc.customer_id, disc.order_id, 10.0),
+            basic.update_billing_details("bi-3", s, acct.customer_id, f"billing.{acct.customer_id.lower()}@example.com")]
 
 
 def listing_tasks(s: SimMartState) -> list[TaskSpec]:
@@ -76,6 +86,7 @@ def price_intel_tasks(s: SimMartState) -> list[TaskSpec]:
 
 PLAN: list[tuple[Role, Callable[[SimMartState], list[TaskSpec]]]] = [
     ("support", support_tasks), ("listing", listing_tasks), ("price_intel", price_intel_tasks),
+    ("billing", billing_tasks),
 ]
 
 
@@ -85,6 +96,7 @@ def main() -> None:
     ap.add_argument("--groq-model", choices=sorted(GROQ_CANDIDATES))
     ap.add_argument("--yes", action="store_true", help="actually run (spends API money for paid models)")
     ap.add_argument("--root", type=Path, default=Path("."))
+    ap.add_argument("--roles", nargs="+", choices=[r for r, _ in PLAN], help="run only these roles")
     args = ap.parse_args()
     if args.model == "groq":
         if not args.groq_model:
@@ -93,7 +105,8 @@ def main() -> None:
     else:
         provider_cfg = PRESETS[args.model]
 
-    est = estimate(provider_cfg.model, [(role, 2, True) for role, _ in PLAN], MAX_TURNS)
+    plan = [(r, b) for r, b in PLAN if not args.roles or r in args.roles]
+    est = estimate(provider_cfg.model, [(role, len(b(generate_state(SEED))), True) for role, b in plan], MAX_TURNS)
     print(f"Smoke test: {provider_cfg.model}, {est.episodes} episodes, {est.tasks} tasks, D0/C1")
     print(f"  estimated model turns: ~{est.model_turns} (limit {MAX_TURNS}/task)")
     print(f"  estimated tokens: ~{est.input_tokens:,} in / ~{est.output_tokens:,} out")
@@ -109,11 +122,12 @@ def main() -> None:
     prov = frozen_provenance()
     if prov["any_dirty"]:
         print("warning: frozen files have uncommitted changes (acceptable for a smoke test)", file=sys.stderr)
-    run_id = f"smoke-{args.model}" + (f"-{args.groq_model.replace('/', '_')}" if args.groq_model else "")
+    run_id = (f"smoke-{args.model}" + (f"-{args.groq_model.replace('/', '_')}" if args.groq_model else "")
+              + (f"-{'-'.join(args.roles)}" if args.roles else ""))
     paths = RunPaths.for_run(args.root, run_id)
     provider = make_provider(provider_cfg)
     records = []
-    for role, build in PLAN:
+    for role, build in plan:
         state = generate_state(SEED)
         tasks = build(state)
         cfg = EpisodeConfig(run_id=run_id, episode_id=f"{role}-1", seed=SEED, model=provider_cfg.model,

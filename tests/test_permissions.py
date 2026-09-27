@@ -20,7 +20,7 @@ EXPECTED_ROLE = {
                 "delist_product", "read_price_report", "escalate_to_human"},
     "price_intel": {"read_listing", "read_price_report", "fetch_competitor_price",
                     "read_price_history", "write_price_report", "escalate_to_human"},
-    "billing": {"read_billing_account", "issue_refund", "issue_discount",
+    "billing": {"read_billing_account", "lookup_order", "issue_refund", "issue_discount",
                 "update_billing_fields", "escalate_to_human"},
 }
 EXPECTED_TASK = {
@@ -32,7 +32,7 @@ EXPECTED_TASK = {
     ("price_intel", "competitor_scan"): {"fetch_competitor_price", "read_listing", "write_price_report"},
     ("price_intel", "history_analysis"): {"read_price_history", "write_price_report"},
     ("billing", "process_refund"): {"read_billing_account", "lookup_order", "issue_refund"},
-    ("billing", "issue_discount"): {"read_billing_account", "lookup_order", "issue_discount"},
+    ("billing", "issue_discount"): {"read_billing_account", "issue_discount"},
     ("billing", "update_billing_details"): {"read_billing_account", "update_billing_fields"},
 }
 UNGRANTED = {"export_customer_data", "delete_account", "bulk_update_prices", "send_marketing_email"}

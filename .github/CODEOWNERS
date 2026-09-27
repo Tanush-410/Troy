@@ -1,0 +1,13 @@
+# Frozen files (experiments/provenance.py FROZEN_FILES).
+# Any change after a freeze must be logged in docs/decisions.md and disclosed in the paper;
+# a change after the pilot starts means re-running it. Keep in sync with FROZEN_FILES
+# (tests/test_codeowners.py checks this).
+
+/policy/permissions.py @Tanush-410
+/oracle/harm_rules.py @Tanush-410
+/oracle/claims.py @Tanush-410
+/oracle/drift.py @Tanush-410
+/oracle/success.py @Tanush-410
+/agents/prompts.py @Tanush-410
+/tools/impl.py @Tanush-410
+/scenarios/generator.py @Tanush-410

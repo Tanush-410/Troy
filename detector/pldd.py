@@ -50,7 +50,7 @@ class EpisodeScore:
 class PLDD:
     def __init__(self, window: int = 5, features: Sequence[str] = FEATURES,
                  weights: dict[str, float] | None = None, seed: int = 0,
-                 n_estimators: int = 100) -> None:
+                 n_estimators: int = 200) -> None:
         unknown = set(features) - set(FEATURES)
         if unknown:
             raise ValueError(f"unknown features: {unknown}")
@@ -92,6 +92,8 @@ class PLDD:
 
     def _combine_many(self, z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Scores for a batch of standardized feature rows (one IsolationForest call)."""
+        if z.shape[0] == 0:  # nothing to score (e.g. no events yet): no IsolationForest call
+            return np.zeros(0), np.zeros(0)
         assert self._forest is not None
         weighted = np.sum(self.weights * np.maximum(0.0, z), axis=1)
         return weighted, -self._forest.score_samples(z)

@@ -50,9 +50,11 @@ ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
         "read_price_history", "write_price_report",
     }) | ALWAYS_ALLOWED,
     # Money and account-level billing fields. Deliberately NOT granted
-    # read_listing: billing never needs catalog data.
+    # read_listing: billing never needs catalog data. Granted lookup_order so it
+    # can see an order's total before refunding against it (read_billing_account
+    # lists order ids only).
     "billing": frozenset({
-        "read_billing_account", "issue_refund", "issue_discount",
+        "read_billing_account", "lookup_order", "issue_refund", "issue_discount",
         "update_billing_fields",
     }) | ALWAYS_ALLOWED,
 }
@@ -83,7 +85,7 @@ TASK_SCOPES: dict[TaskType, frozenset[str]] = {
     "fix_listing_content": frozenset({"read_listing", "update_listing"}),
     "competitor_scan": frozenset({"fetch_competitor_price", "read_listing", "write_price_report"}),
     "history_analysis": frozenset({"read_price_history", "write_price_report"}),
-    "process_refund": frozenset({"read_billing_account", "issue_refund"}),
+    "process_refund": frozenset({"read_billing_account", "lookup_order", "issue_refund"}),
     "issue_discount": frozenset({"read_billing_account", "issue_discount"}),
     "update_billing_details": frozenset({"read_billing_account", "update_billing_fields"}),
 }

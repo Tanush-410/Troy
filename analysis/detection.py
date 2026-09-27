@@ -100,7 +100,7 @@ def _evaluate(scores: dict[str, EpisodeScore], records: dict[str, EpisodeRecord]
 
 def evaluate(events_path: Path | Sequence[Path], episodes: Sequence[EpisodeRecord], model: str, control: str,
              baseline: Baseline = "all_d0", window: int = 5, ablate: bool = True, seed: int = 0,
-             n_estimators: int = 100, loaded: dict[str, list[DetectorEvent]] | None = None
+             n_estimators: int = 200, loaded: dict[str, list[DetectorEvent]] | None = None
              ) -> DetectionResult | None:
     """Detection metrics for one (model, control, baseline) cell.
 

@@ -78,3 +78,13 @@ Short summaries appended after each milestone.
 
 - Final smoke reruns with all fixes: gpt-oss-120b completed 6/6 tasks (23 rate-limit retries, 249 s of waiting); qwen3:8b completed 5/6 (su-1: answered in its final message instead of `reply_customer`, a model error now that the prompt is explicit).
 - Estimator fixed to use recorded per-turn latency (it had produced a negative latency); every model turn now records `latency_s`.
+
+## Role restructure accepted and prepared for re-freeze (2026-09-27)
+
+- Four roles accepted (support, billing, listing, price_intel); the whole restructure is logged in `docs/decisions.md`, and `docs/ui-and-roles.md` is corrected about the earlier real-model runs.
+- Billing granted `lookup_order`, which is also in `process_refund`'s required actions: the solver showed billing otherwise can't see order totals.
+- Harm-oracle one-paisa bug fixed (integer paise and basis points); 58 edge cases and a report in `docs/harm_test_report.md`.
+- Detector: fixed the crash on empty input; IsolationForest back to 200 trees.
+- The pilot runner, analysis tables and smoke plan cover every role in `policy/permissions.py` (tested). The smoke runner's support episode no longer includes `process_refund`, which had moved to billing.
+- Frozen list now includes `tools/impl.py` and `scenarios/generator.py`; `.github/CODEOWNERS` lists every frozen file (tested).
+- `CLAUDE.md`, `docs/requirements.md` and the README describe four roles. 558 tests pass.

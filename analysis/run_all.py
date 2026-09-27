@@ -17,7 +17,7 @@ from typing import Any
 from analysis.figures import dt_timelines, harm_bars, roc_curves
 from analysis import stats
 from analysis.stats import fmt_ci
-from analysis.tables import Dataset, all_tables, by_key
+from analysis.tables import ROLES, Dataset, all_tables, by_key
 
 
 def write_csv(rows: list[dict[str, Any]], path: Path) -> None:
@@ -56,7 +56,7 @@ def summary_md(ds: Dataset, tables: dict[str, list[dict[str, Any]]], run_dirs: l
         lines += ["### RQ1: what static RBAC contains (C1)", "",
                   "| Agent | Drifted calls | Type I | Type II | Type III | Harm inside permitted actions | "
                   "Harmful calls blocked (95% CI) |", "|---|---|---|---|---|---|---|"]
-        for role in ("support", "listing", "price_intel", "all"):
+        for role in (*ROLES, "all"):
             r = by_key(tables["rq1_drift_types"], model=model, agent=role, control="C1")
             if r:
                 lines.append(f"| {role} | {r['drifted_calls']} | {_pct(r['type_I_share'])} | {_pct(r['type_II_share'])} | "
@@ -66,7 +66,7 @@ def summary_md(ds: Dataset, tables: dict[str, list[dict[str, Any]]], run_dirs: l
                   "| Agent | Harmful executed C1 | Harmful executed C2 | Fisher p (episodes) | "
                   "Task success C1 | Task success C2 | Fisher p | Decision latency C1 / C2 (ms) |",
                   "|---|---|---|---|---|---|---|---|"]
-        for role in ("support", "listing", "price_intel", "all"):
+        for role in (*ROLES, "all"):
             r = by_key(tables["rq2_controls"], model=model, agent=role)
             if r:
                 lines.append(
@@ -92,7 +92,7 @@ def summary_md(ds: Dataset, tables: dict[str, list[dict[str, Any]]], run_dirs: l
                 or "Sensitivity (harm-free D0 baseline): n/a"]
         lines += ["", "### Other rates", "", "| Agent | D0 harm rate (95% CI) | Format-error rate (95% CI) | "
                   "Context overflow | Escalation rate | API retries |", "|---|---|---|---|---|---|"]
-        for role in ("support", "listing", "price_intel", "all"):
+        for role in (*ROLES, "all"):
             d = by_key(tables["d0_harm"], model=model, agent=role)
             f = by_key(tables["format_errors"], model=model, agent=role)
             c = by_key(tables["context_overflow_escalation"], model=model, agent=role, drift="all")

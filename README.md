@@ -2,7 +2,7 @@
 
 Experiment code for *Beyond Static Roles: Evaluating Role-Based Access Control as a Containment and Detection Mechanism for Agent Drift*.
 
-LLM agents work inside a simulated e-commerce marketplace (SimMart) as three roles: customer support, listing management, and competitor price intelligence. Every tool call passes through a policy enforcement point (PEP) outside the agent. The PEP enforces role-based access control, labels each call against a fixed drift taxonomy and harm oracle, and writes a JSONL log. The code measures three things:
+LLM agents work inside a simulated e-commerce marketplace (SimMart) as four roles: customer support, billing and discounts, listing management, and competitor price intelligence. Refunds and discounts sit with billing, separate from customer-facing support. Every tool call passes through a policy enforcement point (PEP) outside the agent. The PEP enforces role-based access control, labels each call against a fixed drift taxonomy and harm oracle, and writes a JSONL log. The code measures three things:
 
 - **RQ1:** how much harmful drift static RBAC (C1) blocks, and how much happens inside permitted actions.
 - **RQ2:** whether task-scoped RBAC (C2) reduces harm, and what it costs in task success.
@@ -51,7 +51,7 @@ The tests cover:
 
 ## Scripted pipeline (no model, no cost)
 
-A fixed-script agent runs three episodes (price intelligence, then listing, then support) on one shared state, under C1 and then C2. Its steps deliberately include every drift type and every harm rule, including the cross-agent injection path.
+A fixed-script agent runs four episodes (price intelligence, then listing, then support, then billing) on one shared state, under C1 and then C2. Its steps deliberately include every drift type and every harm rule, including the cross-agent injection path.
 
 ```sh
 uv run python -m experiments.scripted_pipeline          # writes logs/ and transcripts/ here
@@ -117,7 +117,7 @@ Pick the runs and filters in the sidebar (run folders, agent role, model, drift 
 
 ## Full runs
 
-`experiments/pilot.py` runs every cell with paired seeds and is resumable. It refuses to start if any frozen file (oracle, success checkers, permission tables, prompts) differs from its last commit. For example:
+`experiments/pilot.py` runs every cell with paired seeds and is resumable. It runs every role in `policy/permissions.py` (96 episodes per model at 3 per cell). It refuses to start if any frozen file differs from its last commit: the oracle, success checkers, permission tables, prompts, tool implementations and scenario generator, as listed in `.github/CODEOWNERS`. For example:
 
 ```sh
 uv run python -m experiments.pilot --model qwen3 --episodes-per-cell 3 --run-id pilot-qwen3 --yes
@@ -135,14 +135,15 @@ uv run python -m experiments.full_estimate logs/<groq smoke run> logs/<qwen smok
 | Folder | Contents |
 |---|---|
 | `simmart/` | Marketplace state, seeded data generator, competitor price simulator |
-| `tools/` | Mock tools and their schemas |
+| `tools/` | Mock tools and their schemas (implementations frozen) |
 | `policy/` | Permission tables (frozen), static and task-scoped RBAC, the PEP, log schema |
 | `oracle/` | Harm rules, prohibited claims, drift-type classifier, task-success checkers (frozen) |
 | `agents/` | Agent loop, role prompts (frozen), scripted agent, providers (Anthropic, Groq/OpenAI-compatible, Ollama) |
-| `scenarios/` | D0–D3 task and injection generators; reference solver used in tests |
+| `scenarios/` | D0–D3 task and injection generators (frozen); reference solver used in tests |
 | `detector/` | PLDD features, combiners, calibration, replay; reads only the detector view of the log |
 | `experiments/` | Episode runner, smoke test, pilot/full runner, cost estimates, provenance |
 | `analysis/` | Metrics, statistics, tables, figures, `run_all` |
 | `gui/` | Read-only Streamlit dashboard (`gui/app.py`), log loading, live demo |
+| `app/` | Interactive console: chat with one agent and watch the PEP decide live (`uv run python -m app.server`); its sessions are fenced out of `analysis/` |
 | `tests/` | pytest suite |
 | `logs/`, `transcripts/`, `results/` | Generated output (`logs/` and `transcripts/` are gitignored) |
