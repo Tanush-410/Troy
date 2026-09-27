@@ -20,6 +20,7 @@ from dataclasses import dataclass
 import numpy as np
 from sklearn.ensemble import IsolationForest
 
+from detector.config import DETECTOR, DetectorConfig
 from detector.features import FEATURES, Baseline, drift_jsd, fit_baseline, raw_features, standardize, windows
 from policy.log_schema import DetectorEvent
 
@@ -48,18 +49,24 @@ class EpisodeScore:
 
 
 class PLDD:
-    def __init__(self, window: int = 5, features: Sequence[str] = FEATURES,
-                 weights: dict[str, float] | None = None, seed: int = 0,
-                 n_estimators: int = 200) -> None:
+    """Detector over lists of detector-view episodes. Every setting defaults to the frozen
+    `DETECTOR` config; pass a value explicitly only to override it (ablations, tests)."""
+
+    def __init__(self, window: int | None = None, features: Sequence[str] | None = None,
+                 weights: dict[str, float] | None = None, seed: int | None = None,
+                 n_estimators: int | None = None, config: DetectorConfig = DETECTOR) -> None:
+        features = tuple(config.features if features is None else features)
         unknown = set(features) - set(FEATURES)
         if unknown:
             raise ValueError(f"unknown features: {unknown}")
-        self.window = window
-        self.features = tuple(features)
+        self.config = config
+        self.window = config.window if window is None else window
+        self.features = features
         self._idx = [FEATURES.index(f) for f in self.features]
-        self.weights = np.array([(weights or {}).get(f, 1.0) for f in self.features])
-        self.seed = seed
-        self.n_estimators = n_estimators
+        merged = {**config.weights, **(weights or {})}
+        self.weights = np.array([merged.get(f, 1.0) for f in self.features])
+        self.seed = config.iforest_seed if seed is None else seed
+        self.n_estimators = config.n_estimators if n_estimators is None else n_estimators
         self.baseline: Baseline | None = None
         self._forest: IsolationForest | None = None
         self.thresholds: dict[str, float] = {}
@@ -72,7 +79,8 @@ class PLDD:
         self._forest = IsolationForest(n_estimators=self.n_estimators, random_state=self.seed).fit(z)
         return self
 
-    def calibrate(self, episodes: Sequence[Sequence[DetectorEvent]], fpr: float = 0.05) -> PLDD:
+    def calibrate(self, episodes: Sequence[Sequence[DetectorEvent]], fpr: float | None = None) -> PLDD:
+        fpr = self.config.calibration_fpr if fpr is None else fpr
         for c in COMBINERS:
             maxima = np.array([self._max_raw(ep, c) for ep in episodes])
             # smallest threshold with at most `fpr` of calibration episodes strictly above it

@@ -1,6 +1,7 @@
-"""Resumable runner: paired seeds, merging, resume, and no cross-episode interference."""
+"""Resumable runner: paired seeds, merging, resume, pause on a stop file, no cross-episode interference."""
 
 import json
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -11,6 +12,8 @@ from experiments import pilot
 from experiments.runner import RunPaths
 from policy.permissions import ROLES
 from scenarios.generator import ScenarioConfig
+
+CLEAN_PROV = {"any_dirty": False, "head": "0" * 40, "files": {}}
 
 
 class EndTurnSession:
@@ -81,3 +84,51 @@ def test_resume_skips_finished_and_discards_partial(tmp_path, fake):
     assert [p[4] for p in remaining] == [todo[1][4], todo[2][4]]
     merged = paths.events.read_text() if paths.events.exists() else ""
     assert "partial" not in merged  # partial work never reached the run's logs
+
+
+# ------------------------------------------------------------------ pausing
+
+
+def main_for(tmp_path, monkeypatch, run_id, stop: bool):
+    paths = RunPaths.for_run(tmp_path, run_id)
+    paths.logs.mkdir(parents=True, exist_ok=True)
+    if stop:
+        (paths.logs / "STOP").write_text("")
+    monkeypatch.setattr(pilot, "frozen_provenance", lambda: CLEAN_PROV)
+    monkeypatch.setattr(sys, "argv", ["pilot", "--model", "qwen3", "--episodes-per-cell", "1",
+                                      "--run-id", run_id, "--root", str(tmp_path)])
+    return paths
+
+
+def test_a_stop_file_keeps_a_paused_run_paused(tmp_path, fake, monkeypatch):
+    paths = main_for(tmp_path, monkeypatch, "paused", stop=True)
+    pilot.main()
+    assert not paths.episodes.exists()  # nothing ran, nothing was written
+    assert (paths.logs / "STOP").exists()  # and the pause is still in place
+
+
+def test_stop_file_ends_the_run_between_episodes_and_resume_finishes_it(tmp_path, fake, monkeypatch):
+    paths = main_for(tmp_path, monkeypatch, "stopping", stop=False)
+    real_run_one, seen, pausing = pilot.run_one, [], True
+
+    def pausing_run_one(*a):
+        seen.append(a[6])  # the episode id
+        if pausing and len(seen) == 2:  # the author pauses the run while it is going
+            (paths.logs / "STOP").write_text("")
+        return real_run_one(*a)
+
+    monkeypatch.setattr(pilot, "run_one", pausing_run_one)
+    monkeypatch.setattr(sys, "argv", sys.argv + ["--yes"])
+    pilot.main()
+    plan = pilot.plan("qwen3", 1)
+    assert 1 < len(seen) < len(plan)  # it stopped early
+    assert pilot.completed_ids(paths) == set(seen)  # every started episode finished and merged
+
+    # resuming with --yes clears the pause and runs exactly what was left
+    pausing = False
+    before = len(pilot.completed_ids(paths))
+    seen.clear()
+    pilot.main()
+    assert len(seen) == len(plan) - before
+    assert pilot.completed_ids(paths) == {p[4] for p in plan}
+    assert not (paths.logs / "STOP").exists()

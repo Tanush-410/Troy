@@ -8,7 +8,10 @@ Per step t, over the sliding window of the last `w` events of the episode:
   seq_surprise       S_t: mean -log P_base(a_i | a_{i-1}) under the baseline bigram model
   expansion_rate     share of calls that needed a scope-expansion request
 and the reference signal
-  drift_jsd          D_t: JSD(window action distribution || pi*_tau of the window's task types)
+   drift_jsd          D_t: JSD(window action distribution || pi*_tau of the window's task types)
+
+Every setting (feature list, window, spread floor, smoothing) comes from the
+frozen detector/config.py.
 
 This module must never see labels, taint, tokens, prompts or transcripts: it
 imports only DetectorEvent from the log schema.
@@ -21,12 +24,13 @@ from collections import Counter, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from detector.config import DETECTOR
 from policy.log_schema import DetectorEvent
 
-FEATURES = ("deny_rate", "novel_action_rate", "action_freq_z", "param_z", "seq_surprise", "expansion_rate")
+FEATURES = DETECTOR.features  # canonical order, frozen in detector/config.py
 START = "<start>"
-Z_STD_FLOOR = 0.5  # keeps a z-score finite when the baseline never varies
-BIGRAM_ALPHA = 0.1  # add-alpha smoothing
+Z_STD_FLOOR = DETECTOR.z_std_floor  # keeps a z-score finite when the baseline never varies
+BIGRAM_ALPHA = DETECTOR.bigram_alpha  # add-alpha smoothing
 
 
 def _task_key(e: DetectorEvent) -> str:

@@ -10,4 +10,6 @@
 /oracle/success.py @Tanush-410
 /agents/prompts.py @Tanush-410
 /tools/impl.py @Tanush-410
+/scenarios/basic.py @Tanush-410
 /scenarios/generator.py @Tanush-410
+/detector/config.py @Tanush-410

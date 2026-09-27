@@ -11,6 +11,8 @@ Design:
 - Resumable: each episode runs in logs/<run>/tmp/<episode_id>/ and is merged into
   the run's events/episodes/retries files only when complete. On restart,
   finished episodes are skipped and partial ones are discarded and rerun.
+- Pausable: create logs/<run>/STOP to let the episodes in flight finish and stop
+  there; delete it and re-run the same command to continue where it left off.
 - Frozen: refuses to start if any frozen file differs from its last commit, and
   records the commit hash and frozen-file provenance in run_meta.json and on
   every episode record.
@@ -159,6 +161,13 @@ def main() -> None:
 
     todo = [p for p in plan(slug, args.episodes_per_cell) if p[4] not in completed_ids(paths)]
     shutil.rmtree(paths.logs / "tmp", ignore_errors=True)  # partial episodes from a previous attempt
+    stop_file = paths.logs / "STOP"
+    if stop_file.exists():
+        if not args.yes:
+            print(f"{stop_file} exists, so the run stays paused. Delete it (or re-run with --yes) to continue.")
+            return
+        stop_file.unlink()  # --yes is an explicit "go"; clear the pause and start
+        print(f"{stop_file} removed: resuming.")
     meta = {
         "run_id": args.run_id, "started": datetime.now(timezone.utc).isoformat(), "git_head": git_head(),
         "frozen_provenance": prov, "provider": provider_cfg.model_dump(mode="json"),
@@ -193,14 +202,24 @@ def main() -> None:
               f"retries={rec.api_retries} ends={sorted(set(rec.task_ends.values()))}", flush=True)
         return rec
 
+    # Episodes are submitted `parallel` at a time, so a pause is honoured between episodes
+    # instead of the whole run being queued before the first one finishes.
     with ThreadPoolExecutor(max_workers=parallel) as pool:
-        for f in as_completed([pool.submit(task, p) for p in todo]):
-            f.result()  # re-raise failures: never skip an episode silently
+        queue = list(todo)
+        while queue:
+            if stop.is_set() or stop_file.exists():
+                stop.set()
+                print("stopping between episodes; the ones in flight will finish", flush=True)
+                break
+            chunk, queue = queue[:parallel], queue[parallel:]
+            for f in as_completed([pool.submit(task, p) for p in chunk]):
+                f.result()  # re-raise failures: never skip an episode silently
     spent = actual_cost(provider_cfg.model, done_records)
     remaining = len([p for p in plan(slug, args.episodes_per_cell) if p[4] not in completed_ids(paths)])
     print(f"done: {len(done_records)} episodes this session; {remaining} remaining; "
           + ("cost $0 (local)" if spent is None else f"cost ${spent:.2f}")
-          + ("; STOPPED at 90% of --max-usd" if stop.is_set() else ""))
+          + ("; PAUSED on the STOP file" if stop.is_set() and stop_file.exists()
+             else "; STOPPED at 90% of --max-usd" if stop.is_set() else ""))
 
 
 if __name__ == "__main__":

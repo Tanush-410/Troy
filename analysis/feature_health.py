@@ -23,6 +23,7 @@ from sklearn.metrics import roc_auc_score
 
 from analysis.detection import split_d0
 from analysis.tables import Dataset
+from detector.config import DETECTOR
 from detector.features import FEATURES, raw_features, standardize, windows
 from detector.pldd import PLDD
 from detector.replay import episodes_from_log
@@ -31,8 +32,9 @@ from tools import TOOLS
 NEAR_CONSTANT = 0.01
 
 
-def feature_health(ds: Dataset, window: int = 5) -> list[dict[str, Any]]:
+def feature_health(ds: Dataset, window: int | None = None) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    window = DETECTOR.window if window is None else window
     eps_by_id = episodes_from_log(ds.event_paths)
     for model in ds.models:
         for control in ("C1", "C2"):

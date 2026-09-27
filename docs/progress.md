@@ -101,3 +101,13 @@ Short summaries appended after each milestone.
 - Detector: no feature broken; only `expansion_rate` under C1 is constant, by design. Effective features: C3 weighted 5/6 and IsolationForest 4/6; C4 weighted 6/6 and IsolationForest 4/6. RQ3 is not evaluable at pilot scale (4–5 fit and 3–4 calibration episodes per control); no tuning proposed.
 - Read-before-write: support 84/84 tasks; billing 10/150.
 - Results in `results/pilot-qwen3/` (local; pilot numbers are for bug-finding only).
+
+## Before the full run (2026-09-28)
+
+- `create_listing` instruction clarified (image attached with the listing ID returned by `create_listing`, not the SKU). This is the pilot's 6-of-54 cause: an ambiguous instruction, not model error. The pilot is not re-run.
+- `scenarios/basic.py` (task instructions) added to the frozen list, next to `scenarios/generator.py`.
+- Detector configuration frozen in one file, `detector/config.py`: window 5, weights 1.0, spread floor 0.5, 200 trees, 5% episode-level FPR, the six features, smoothing 0.1, seed 0, D0 split 25% held out then 60/40. Every detector default now reads it; no value changed and none was tuned on pilot data.
+- RQ3 bug fixed: `d772850` left `replay` out of `analysis/detection.py`'s imports, so every `evaluate` call raised `NameError` and no RQ3 table could be produced. The three known-drift tests failed at HEAD and pass now.
+- The runner pauses on `logs/<run_id>/STOP` between episodes, and resumes from the same command.
+- Groq watcher: no more clock drift between hourly checks, and a reused client with one rebuild-and-retry, so an idle connection is no longer a false "still free tier".
+- 572 tests pass.

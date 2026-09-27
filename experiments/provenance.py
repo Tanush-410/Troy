@@ -22,7 +22,9 @@ FROZEN_FILES: tuple[str, ...] = (
     "oracle/success.py",
     "agents/prompts.py",  # role prompts and shared agent instructions
     "tools/impl.py",  # what each tool does to state, incl. the billing tools
+    "scenarios/basic.py",  # task instructions and entity selection, incl. supplier text
     "scenarios/generator.py",  # task and injection generation, incl. A1 targets
+    "detector/config.py",  # every PLDD setting: window, weights, features, splits
 )
 
 

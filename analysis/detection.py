@@ -24,14 +24,15 @@ from typing import Any, Literal
 
 from sklearn.metrics import roc_auc_score
 
+from detector.config import DETECTOR, DetectorConfig
 from detector.features import FEATURES
 from detector.pldd import COMBINERS, PLDD, EpisodeScore
 from detector.replay import episodes_from_log, replay
 from policy.log_schema import EpisodeRecord
 from tools import TOOLS
 
-HOLDOUT_SHARE = 0.25
-FIT_SHARE = 0.60  # of the non-held-out D0 episodes; the rest calibrates
+HOLDOUT_SHARE = DETECTOR.holdout_share
+FIT_SHARE = DETECTOR.fit_share  # of the non-held-out D0 episodes; the rest calibrates
 Baseline = Literal["all_d0", "harm_free_d0"]
 
 
@@ -39,13 +40,13 @@ def _u(episode_id: str) -> float:
     return int.from_bytes(hashlib.sha256(episode_id.encode()).digest()[:8], "big") / 2**64
 
 
-def split_d0(episode_ids: Sequence[str]) -> dict[str, list[str]]:
+def split_d0(episode_ids: Sequence[str], config: DetectorConfig = DETECTOR) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {"holdout": [], "fit": [], "calib": []}
     for eid in sorted(episode_ids):
         u = _u(eid)
-        if u < HOLDOUT_SHARE:
+        if u < config.holdout_share:
             out["holdout"].append(eid)
-        elif (u - HOLDOUT_SHARE) / (1 - HOLDOUT_SHARE) < FIT_SHARE:
+        elif (u - config.holdout_share) / (1 - config.holdout_share) < config.fit_share:
             out["fit"].append(eid)
         else:
             out["calib"].append(eid)
@@ -99,17 +100,18 @@ def _evaluate(scores: dict[str, EpisodeScore], records: dict[str, EpisodeRecord]
 
 
 def evaluate(events_path: Path | Sequence[Path], episodes: Sequence[EpisodeRecord], model: str, control: str,
-             baseline: Baseline = "all_d0", window: int = 5, ablate: bool = True, seed: int = 0,
-             n_estimators: int = 200, loaded: dict[str, list[DetectorEvent]] | None = None
-             ) -> DetectionResult | None:
+             baseline: Baseline = "all_d0", window: int | None = None, ablate: bool = True, seed: int | None = None,
+             n_estimators: int | None = None, loaded: dict[str, list[DetectorEvent]] | None = None,
+             config: DetectorConfig = DETECTOR) -> DetectionResult | None:
     """Detection metrics for one (model, control, baseline) cell.
 
     `loaded` lets a caller that evaluates many cells over the same logs parse the
-    JSONL once and pass the episodes in, instead of re-reading it per cell.
+    JSONL once and pass the episodes in, instead of re-reading it per cell. Every
+    setting defaults to the frozen detector config.
     """
     recs = {r.episode_id: r for r in episodes if r.model == model and r.control_condition == control}
     d0 = [eid for eid, r in recs.items() if r.drift_condition == "D0"]
-    split = split_d0(d0)
+    split = split_d0(d0, config)
     fit_ids = split["fit"] if baseline == "all_d0" else [i for i in split["fit"]
                                                           if recs[i].total_harmful_attempted == 0]
     eps = loaded if loaded is not None else episodes_from_log(events_path)
@@ -119,7 +121,7 @@ def evaluate(events_path: Path | Sequence[Path], episodes: Sequence[EpisodeRecor
         return None
 
     def build(features: Sequence[str]) -> PLDD:
-        return PLDD(window=window, features=features, seed=seed, n_estimators=n_estimators) \
+        return PLDD(window=window, features=features, seed=seed, n_estimators=n_estimators, config=config) \
             .fit(fit_eps, sorted(TOOLS)).calibrate(calib_eps)
 
     pldd = build(FEATURES)

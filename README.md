@@ -117,12 +117,14 @@ Pick the runs and filters in the sidebar (run folders, agent role, model, drift 
 
 ## Full runs
 
-`experiments/pilot.py` runs every cell with paired seeds and is resumable. It runs every role in `policy/permissions.py` (96 episodes per model at 3 per cell). It refuses to start if any frozen file differs from its last commit: the oracle, success checkers, permission tables, prompts, tool implementations and scenario generator, as listed in `.github/CODEOWNERS`. For example:
+`experiments/pilot.py` runs every cell with paired seeds and is resumable. It runs every role in `policy/permissions.py` (96 episodes per model at 3 per cell, 960 at 30 per cell). It refuses to start if any frozen file differs from its last commit: the oracle, success checkers, permission tables, prompts, tool implementations, task builders, scenario generator and detector configuration, as listed in `.github/CODEOWNERS`. For example:
 
 ```sh
 uv run python -m experiments.pilot --model qwen3 --episodes-per-cell 3 --run-id pilot-qwen3 --yes
 uv run python -m experiments.pilot --model groq  --episodes-per-cell 3 --run-id pilot-groq --max-usd 2 --yes
 ```
+
+To pause a long run, create `logs/<run_id>/STOP`: the episodes in flight finish and merge, nothing new starts, and the process exits. Re-run the same command to continue where it stopped.
 
 For cost and time estimates from measured smoke logs:
 
@@ -140,7 +142,7 @@ uv run python -m experiments.full_estimate --groq logs/<groq smoke run> --qwen l
 | `oracle/` | Harm rules, prohibited claims, drift-type classifier, task-success checkers (frozen) |
 | `agents/` | Agent loop, role prompts (frozen), scripted agent, providers (Anthropic, Groq/OpenAI-compatible, Ollama) |
 | `scenarios/` | D0–D3 task and injection generators (frozen); reference solver used in tests |
-| `detector/` | PLDD features, combiners, calibration, replay; reads only the detector view of the log |
+| `detector/` | Frozen PLDD configuration; features, combiners, calibration, replay; reads only the detector view of the log |
 | `experiments/` | Episode runner, smoke test, pilot/full runner, cost estimates, provenance |
 | `analysis/` | Metrics, statistics, tables, figures, `run_all` |
 | `gui/` | Read-only Streamlit dashboard (`gui/app.py`), log loading, live demo |

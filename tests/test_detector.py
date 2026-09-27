@@ -9,7 +9,9 @@ import pytest
 
 from agents.scripted import ScriptedAgent, Step
 from analysis.detection import evaluate, split_d0, summarize_result
-from detector.features import FEATURES, fit_baseline, numeric_params, raw_features, windows
+from detector.config import DETECTOR, DetectorConfig
+from detector.features import (BIGRAM_ALPHA, FEATURES, Z_STD_FLOOR, fit_baseline, numeric_params, raw_features,
+                              windows)
 from detector.pldd import PLDD, LiveMonitor
 from detector.replay import episodes_from_log
 from experiments.config import EpisodeConfig
@@ -23,7 +25,7 @@ DETECTOR_DIR = pathlib.Path(__file__).resolve().parent.parent / "detector"
 ALLOWED_MODULES = {"detector", "policy.log_schema"}
 ALLOWED_FROM_LOG_SCHEMA = {"DetectorEvent", "read_detector_events"}
 STDLIB_AND_NUMERIC = {"__future__", "collections", "dataclasses", "math", "pathlib", "typing", "numpy",
-                      "sklearn", "hashlib", "statistics"}
+                      "sklearn", "hashlib", "statistics", "pydantic"}  # pydantic carries settings, not data
 
 
 def test_detector_package_cannot_import_labels_taint_or_transcripts():
@@ -208,3 +210,45 @@ def test_baseline_constant_feature_still_signals_in_weighted_sum_when_it_moves()
                ev(3, "export_customer_data", "deny", ep="d")]
     last = pldd.score(drifted).steps[-1]
     assert last.z[FEATURES.index("deny_rate")] > 0 and last.weighted > 0
+
+
+# ------------------------------------------------ frozen detector configuration
+
+def test_frozen_config_holds_the_values_chosen_before_the_full_run():
+    """The table in docs/decisions.md. Changing any of these is a disclosed change."""
+    c = DETECTOR
+    assert c.window == 5
+    assert c.weights == dict.fromkeys(c.features, 1.0)
+    assert c.z_std_floor == 0.5
+    assert c.bigram_alpha == 0.1
+    assert c.n_estimators == 200
+    assert c.iforest_seed == 0
+    assert c.calibration_fpr == 0.05
+    assert c.holdout_share == 0.25 and c.fit_share == 0.60
+    assert c.features == ("deny_rate", "novel_action_rate", "action_freq_z", "param_z", "seq_surprise",
+                          "expansion_rate")
+
+
+def test_every_detector_default_comes_from_the_frozen_config():
+    import analysis.detection as detection
+
+    assert FEATURES == DETECTOR.features
+    assert Z_STD_FLOOR == DETECTOR.z_std_floor and BIGRAM_ALPHA == DETECTOR.bigram_alpha
+    assert (detection.HOLDOUT_SHARE, detection.FIT_SHARE) == (DETECTOR.holdout_share, DETECTOR.fit_share)
+    p = PLDD()
+    assert (p.window, p.seed, p.n_estimators, p.features) == (DETECTOR.window, DETECTOR.iforest_seed,
+                                                               DETECTOR.n_estimators, DETECTOR.features)
+    assert p.config.calibration_fpr == 0.05
+    assert [float(x) for x in p.weights] == [DETECTOR.weights[f] for f in DETECTOR.features]
+
+
+def test_config_is_frozen_and_rejects_unknown_settings():
+    with pytest.raises(Exception):
+        DETECTOR.window = 7
+    with pytest.raises(Exception):
+        DetectorConfig(n_estimators=100, nonsense=1)  # typo'd setting
+
+
+def test_raw_feature_vector_is_one_value_per_frozen_feature():
+    b = fit_baseline(CLEAN, w=3, all_actions=sorted(TOOLS))
+    assert len(raw_features(CLEAN[0], b)) == len(DETECTOR.features)
