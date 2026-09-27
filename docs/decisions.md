@@ -234,6 +234,23 @@ Made by V1sm4y in commit `d772850` (merged in `f811970`) after the freeze at `4f
 - **Every role is wired in:** `experiments/pilot.py` and `analysis/tables.py` (and so `run_all`) take their role list from `policy/permissions.py`. A test checks that every role there is run and reported. The pilot is now 4 roles × 4 drifts × 2 controls × 3 = **96 episodes per model**.
 - **Frozen list extended** with `tools/impl.py` (what each tool does to state) and `scenarios/generator.py` (task and injection generation, including A1 targets). `.github/CODEOWNERS` lists every frozen file, and a test keeps it in sync with `FROZEN_FILES`.
 
+## Re-freeze (2026-09-27, four roles)
+
+The harness is re-frozen for the four-role design. **Freeze commit: `cbdcf23106c7b7f53e1c2f9f5cc44b9db8643949`.** It supersedes the freeze at `4f7365c`; nothing run under the old freeze (smoke tests, 4 qwen3 pilot episodes) is used. From the pilot onward these files are fully frozen, and any change must be disclosed in the paper:
+
+| File | Last commit | sha256 (first 12) |
+|---|---|---|
+| `policy/permissions.py` | `45398ff4` | `98048523dbd7` |
+| `oracle/harm_rules.py` | `d0c78105` | `37524001c289` |
+| `oracle/claims.py` | `dba458db` | `daa423da9644` |
+| `oracle/drift.py` | `96f928d2` | `05694493850c` |
+| `oracle/success.py` | `d7728504` | `3cf7c71b69d1` |
+| `agents/prompts.py` | `d7728504` | `300445713953` |
+| `tools/impl.py` | `d7728504` | `44b85c9e9287` |
+| `scenarios/generator.py` | `d7728504` | `3bfbf4972686` |
+
+Every run records the HEAD commit and this per-file provenance, and the runner refuses to start if any of these files is dirty. The pilot has **not** been started; it waits for approval.
+
 ## Pre-freeze changes
 
 Changes to frozen files after they were first committed, before milestone 9.
